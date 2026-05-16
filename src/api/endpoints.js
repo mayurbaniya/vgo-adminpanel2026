@@ -100,6 +100,25 @@ export const Vehicles = {
     client.get('/admin/vehicle/videos', { params: { vehicleID } }),
   deleteVideo: (vLinkId) =>
     client.delete('/admin/vehicle/video', { params: { vLinkId } }),
+  // color variants — soft-migration friendly: list returns EMPTY (data=[])
+  // for vehicles that don't have variants yet.
+  colorVariants: {
+    list: (vehicleID) => client.get(`/admin/vehicle/${vehicleID}/color-variants`),
+    create: (vehicleID, data) =>
+      client.post(`/admin/vehicle/${vehicleID}/color-variants`, data),
+    update: (variantID, data) =>
+      client.put(`/admin/vehicle/color-variants/${variantID}`, data),
+    remove: (variantID) =>
+      client.delete(`/admin/vehicle/color-variants/${variantID}`),
+    addImages: (variantID, formData) =>
+      client.post(`/admin/vehicle/color-variants/${variantID}/images`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      }),
+    removeImage: (variantID, imageURL) =>
+      client.delete(`/admin/vehicle/color-variants/${variantID}/images`, {
+        params: { imageURL },
+      }),
+  },
 };
 
 // -----------------------------------------------------------------------------
@@ -280,6 +299,39 @@ export const Notifications = {
     client.post('/admin/firebase/notifications/topic', data),
   sendByToken: (data) =>
     client.post('/admin/firebase/notifications/send-using-fcmToken', data),
+};
+
+// -----------------------------------------------------------------------------
+// /admin/home-banner/  →  HomeBannerControllerAdmin
+// Promotional carousel banners shown on the mobile home screen. Supports
+// surface targeting (BIKES/CARS/BOTH), schedule windows, CTA deep links,
+// city audience, and click/impression analytics.
+// -----------------------------------------------------------------------------
+export const HomeBanners = {
+  getAll: (params) => client.get('/admin/home-banner/all', { params }),
+  byId: (bannerID) =>
+    client.get('/admin/home-banner/by-id', { params: { bannerID } }),
+  create: (data) => client.post('/admin/home-banner/create', data),
+  update: (bannerID, data) =>
+    client.put('/admin/home-banner/update', data, { params: { bannerID } }),
+  delete: (bannerID) =>
+    client.delete('/admin/home-banner/delete', { params: { bannerID } }),
+  enable: (bannerID) =>
+    client.put('/admin/home-banner/enable', null, { params: { bannerID } }),
+  disable: (bannerID) =>
+    client.put('/admin/home-banner/disable', null, { params: { bannerID } }),
+  reorder: (items) => client.put('/admin/home-banner/reorder', items),
+  addImage: (bannerID, formData) =>
+    client.post('/admin/home-banner/add-image', formData, {
+      params: { bannerID },
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
+  removeImage: (bannerID) =>
+    client.delete('/admin/home-banner/remove-image', { params: { bannerID } }),
+  analytics: (bannerID, params) =>
+    client.get('/admin/home-banner/analytics', {
+      params: { bannerID, ...params },
+    }),
 };
 
 // -----------------------------------------------------------------------------

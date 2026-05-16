@@ -15,6 +15,7 @@ import { Modal } from '@/components/ui/Modal.jsx';
 import { Skeleton } from '@/components/ui/Skeleton.jsx';
 import { Cities as CitiesApi, Vehicles as VehiclesApi } from '@/api/endpoints.js';
 import { cn } from '@/lib/cn';
+import ColoursPanel from './ColoursPanel.jsx';
 
 // Canonical body-type list. Storage uses UPPER_SNAKE; labels are display-only.
 // Mirrors testf/lib/pages/main/body_type_selection.dart so consumer-side filters
@@ -284,7 +285,7 @@ export default function VehicleEditModal({
 
   // Tabs that need their own write path (don't share the main vehicle-edit form)
   // — they're edit-only because each requires an existing vehicleID for its API.
-  const STANDALONE_TABS = new Set(['images', 'pricing', 'videos']);
+  const STANDALONE_TABS = new Set(['images', 'pricing', 'videos', 'colours']);
   const tabs = [
     { id: 'basic', label: 'Basic' },
     { id: 'engine', label: 'Engine & performance' },
@@ -293,6 +294,7 @@ export default function VehicleEditModal({
     ...(isEdit
       ? [
           { id: 'images', label: 'Images' },
+          { id: 'colours', label: 'Colours' },
           { id: 'pricing', label: 'Pricing' },
           { id: 'videos', label: 'Videos' },
         ]
@@ -356,6 +358,8 @@ export default function VehicleEditModal({
             onError={setServerError}
             error={serverError}
           />
+        ) : tab === 'colours' && isEdit ? (
+          <ColoursPanel vehicleID={vehicle.id} />
         ) : tab === 'pricing' && isEdit ? (
           <PricingPanel vehicleID={vehicle.id} />
         ) : tab === 'videos' && isEdit ? (

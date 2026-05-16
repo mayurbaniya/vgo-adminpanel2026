@@ -7,6 +7,7 @@ import {
   ChevronRight,
   ClipboardList,
   HandCoins,
+  Image as ImageIcon,
   LayoutDashboard,
   LogOut,
   Megaphone,
@@ -60,6 +61,7 @@ const NAV_GROUPS = [
   {
     label: 'Comms',
     items: [
+      { to: '/home-banners', label: 'Home Banners', icon: ImageIcon },
       { to: '/notifications', label: 'Notifications', icon: Megaphone },
     ],
   },

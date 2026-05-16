@@ -17,6 +17,7 @@ import PartnersList from './pages/partners/PartnersList.jsx';
 import UsersList from './pages/users/UsersList.jsx';
 import ReviewsList from './pages/reviews/ReviewsList.jsx';
 import NotificationsManager from './pages/notifications/NotificationsManager.jsx';
+import HomeBannersManager from './pages/home-banners/HomeBannersManager.jsx';
 import FeatureFlags from './pages/settings/FeatureFlags.jsx';
 
 export default function App() {
@@ -46,6 +47,7 @@ export default function App() {
         <Route path="/users" element={<UsersList />} />
         <Route path="/reviews" element={<ReviewsList />} />
         <Route path="/notifications" element={<NotificationsManager />} />
+        <Route path="/home-banners" element={<HomeBannersManager />} />
         <Route path="/feature-flags" element={<FeatureFlags />} />
       </Route>
 
