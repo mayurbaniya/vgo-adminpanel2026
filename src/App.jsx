@@ -13,12 +13,14 @@ import LeadsList from './pages/leads/LeadsList.jsx';
 import ExternalLeadsList from './pages/leads/ExternalLeadsList.jsx';
 import SalesList from './pages/sales/SalesList.jsx';
 import FinanceList from './pages/finance/FinanceList.jsx';
+import LoanLeadsList from './pages/loans/LoanLeadsList.jsx';
 import PartnersList from './pages/partners/PartnersList.jsx';
 import UsersList from './pages/users/UsersList.jsx';
 import ReviewsList from './pages/reviews/ReviewsList.jsx';
 import NotificationsManager from './pages/notifications/NotificationsManager.jsx';
 import HomeBannersManager from './pages/home-banners/HomeBannersManager.jsx';
 import FeatureFlags from './pages/settings/FeatureFlags.jsx';
+import ContactInfo from './pages/settings/ContactInfo.jsx';
 
 export default function App() {
   return (
@@ -42,6 +44,7 @@ export default function App() {
         <Route path="/leads" element={<LeadsList />} />
         <Route path="/external-leads" element={<ExternalLeadsList />} />
         <Route path="/sales" element={<SalesList />} />
+        <Route path="/loan-leads" element={<LoanLeadsList />} />
         <Route path="/finance" element={<FinanceList />} />
         <Route path="/partners" element={<PartnersList />} />
         <Route path="/users" element={<UsersList />} />
@@ -49,6 +52,7 @@ export default function App() {
         <Route path="/notifications" element={<NotificationsManager />} />
         <Route path="/home-banners" element={<HomeBannersManager />} />
         <Route path="/feature-flags" element={<FeatureFlags />} />
+        <Route path="/contact-info" element={<ContactInfo />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/dashboard" replace />} />

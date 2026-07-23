@@ -253,6 +253,16 @@ export const Finance = {
 };
 
 // -----------------------------------------------------------------------------
+// /admin/loan/  →  LoanControllerAdmin
+// Loan leads — detailed-form applications and pre-qualification submissions.
+// -----------------------------------------------------------------------------
+export const Loans = {
+  getAll: (params) => client.get('/admin/loan/', { params }),
+  updateStatus: (loanID, status) =>
+    client.put('/admin/loan/status', null, { params: { loanID, status } }),
+};
+
+// -----------------------------------------------------------------------------
 // /admin/partners/  →  PartnerControllerAdmin
 // `create` is the OTP-sending step (returns a clientID); `verify` finalizes
 // the partner record. Backend has no separate /send-otp endpoint.
@@ -289,6 +299,12 @@ export const Users = {
 // -----------------------------------------------------------------------------
 export const Reviews = {
   getAll: (params) => client.get('/admin/review/', { params }),
+  hide: (reviewID) =>
+    client.put('/admin/review/hide', null, { params: { reviewID } }),
+  unhide: (reviewID) =>
+    client.put('/admin/review/unhide', null, { params: { reviewID } }),
+  delete: (reviewID) =>
+    client.delete('/admin/review/', { params: { reviewID } }),
 };
 
 // -----------------------------------------------------------------------------
@@ -347,4 +363,15 @@ export const FeatureFlags = {
     client.put('/admin/app-config/feature-flags/disable', null, {
       params: { key, adminID },
     }),
+};
+
+// -----------------------------------------------------------------------------
+// /admin/contact-info/  →  ContactInfoControllerAdmin
+// Singleton "Contact Us" record — public email/phone + social-media URLs shown
+// in the mobile apps.
+// -----------------------------------------------------------------------------
+export const ContactInfo = {
+  get: () => client.get('/admin/contact-info/'),
+  update: (adminID, data) =>
+    client.put('/admin/contact-info/update', data, { params: { adminID } }),
 };

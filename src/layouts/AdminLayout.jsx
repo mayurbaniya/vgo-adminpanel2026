@@ -13,12 +13,14 @@ import {
   Megaphone,
   Menu,
   MessageSquare,
+  PhoneCall,
   Settings2,
   ShieldCheck,
   Sparkles,
   Star,
   Tags,
   Users,
+  Wallet,
   X,
 } from 'lucide-react';
 import { useAuth } from '@/auth/AuthContext.jsx';
@@ -47,6 +49,7 @@ const NAV_GROUPS = [
       { to: '/leads', label: 'Leads', icon: ClipboardList },
       { to: '/external-leads', label: 'External Leads', icon: ClipboardList },
       { to: '/sales', label: 'Sales', icon: ChartLine },
+      { to: '/loan-leads', label: 'Loan Leads', icon: Wallet },
       { to: '/finance', label: 'Finance', icon: HandCoins },
     ],
   },
@@ -69,6 +72,7 @@ const NAV_GROUPS = [
     label: 'Settings',
     items: [
       { to: '/feature-flags', label: 'Feature Flags', icon: Settings2 },
+      { to: '/contact-info', label: 'Contact Us', icon: PhoneCall },
     ],
   },
 ];

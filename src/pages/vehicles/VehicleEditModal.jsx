@@ -49,8 +49,21 @@ const EMPTY_FORM = {
   brandId: '',
   vehicleType: '',
   isElectric: 'N',
+  launchDate: '',
   priceRange: '',
   price: '',
+  // EV specs — only sent/shown when isElectric === 'Y'
+  batteryCapacity: '',
+  batteryType: '',
+  certifiedRange: '',
+  chargingTimeStandard: '',
+  chargingTimeFast: '',
+  fastCharging: false,
+  motorPower: '',
+  motorType: '',
+  batteryWarranty: '',
+  ridingModes: '',
+  regenerativeBraking: false,
   // engine + performance
   powerCC: '',
   engineType: '',
@@ -101,8 +114,23 @@ function vehicleToForm(v) {
     brandId: v.brand?.id ?? '',
     vehicleType: v.vehicleType ?? '',
     isElectric: v.isElectric ?? 'N',
+    // Backend sends LocalDate as "YYYY-MM-DD", which <input type="date">
+    // consumes directly. Guard the slice in case it ever arrives as a full
+    // ISO datetime.
+    launchDate: v.launchDate ? String(v.launchDate).slice(0, 10) : '',
     priceRange: v.priceRange ?? '',
     price: v.price ?? '',
+    batteryCapacity: v.batteryCapacity ?? '',
+    batteryType: v.batteryType ?? '',
+    certifiedRange: v.certifiedRange ?? '',
+    chargingTimeStandard: v.chargingTimeStandard ?? '',
+    chargingTimeFast: v.chargingTimeFast ?? '',
+    fastCharging: !!v.fastCharging,
+    motorPower: v.motorPower ?? '',
+    motorType: v.motorType ?? '',
+    batteryWarranty: v.batteryWarranty ?? '',
+    ridingModes: v.ridingModes ?? '',
+    regenerativeBraking: !!v.regenerativeBraking,
     powerCC: v.powerCC ?? '',
     engineType: v.engineType ?? '',
     maxTorque: v.maxTorque ?? '',
@@ -156,8 +184,25 @@ function formToDTO(form) {
     brandId: toIntOr(form.brandId),
     vehicleType: form.vehicleType,
     isElectric: form.isElectric,
+    // Send null rather than '' when unset — Jackson rejects '' for LocalDate,
+    // and null is the correct "never show in Newly Launched" value.
+    launchDate: form.launchDate || null,
     priceRange: form.priceRange.trim(),
     price: form.price.trim(),
+    // Both blocks are always sent, never cleared on toggle — the app decides
+    // which to display from isElectric, and silently wiping the other block
+    // would destroy data if someone flipped the switch by mistake.
+    batteryCapacity: form.batteryCapacity.trim(),
+    batteryType: form.batteryType.trim(),
+    certifiedRange: form.certifiedRange.trim(),
+    chargingTimeStandard: form.chargingTimeStandard.trim(),
+    chargingTimeFast: form.chargingTimeFast.trim(),
+    fastCharging: !!form.fastCharging,
+    motorPower: form.motorPower.trim(),
+    motorType: form.motorType.trim(),
+    batteryWarranty: form.batteryWarranty.trim(),
+    ridingModes: form.ridingModes.trim(),
+    regenerativeBraking: !!form.regenerativeBraking,
     powerCC: toIntOr(form.powerCC),
     engineType: form.engineType.trim(),
     maxTorque: form.maxTorque.trim(),
@@ -468,6 +513,18 @@ function BasicTab({ form, patch, brands, isEdit }) {
           ))}
         </div>
       </Field>
+      <Field label="Launch date">
+        <Input
+          type="date"
+          value={form.launchDate}
+          onChange={(e) => patch({ launchDate: e.target.value })}
+        />
+        <p className="mt-1 text-xs text-slate-500">
+          The app’s “Newly Launched” section shows vehicles launched in the
+          last 90 days. A future date shows nothing until that day arrives.
+          Leave blank to keep this vehicle out of the section.
+        </p>
+      </Field>
       <Field label="Price">
         <Input
           value={form.price}
@@ -486,9 +543,92 @@ function BasicTab({ form, patch, brands, isEdit }) {
   );
 }
 
-function EngineTab({ form, patch }) {
+// Powertrain fields split by isElectric. Only one block is ever shown, so an
+// EV record is never presented with a Fuel capacity box to leave blank — the
+// gap that left EV listings looking half-filled in the app.
+function ElectricPowertrainFields({ form, patch }) {
   return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+    <>
+      <Field label="Battery capacity">
+        <Input
+          value={form.batteryCapacity}
+          onChange={(e) => patch({ batteryCapacity: e.target.value })}
+          placeholder="e.g. 3.2 kWh"
+        />
+      </Field>
+      <Field label="Battery type">
+        <Input
+          value={form.batteryType}
+          onChange={(e) => patch({ batteryType: e.target.value })}
+          placeholder="e.g. Lithium-ion"
+        />
+      </Field>
+      <Field label="Certified range">
+        <Input
+          value={form.certifiedRange}
+          onChange={(e) => patch({ certifiedRange: e.target.value })}
+          placeholder="e.g. 150 km"
+        />
+      </Field>
+      <Field label="Motor power">
+        <Input
+          value={form.motorPower}
+          onChange={(e) => patch({ motorPower: e.target.value })}
+          placeholder="e.g. 6.4 kW"
+        />
+      </Field>
+      <Field label="Motor type">
+        <Input
+          value={form.motorType}
+          onChange={(e) => patch({ motorType: e.target.value })}
+          placeholder="e.g. BLDC Hub"
+        />
+      </Field>
+      <Field label="Charging time (standard)">
+        <Input
+          value={form.chargingTimeStandard}
+          onChange={(e) => patch({ chargingTimeStandard: e.target.value })}
+          placeholder="e.g. 4h 30m"
+        />
+      </Field>
+      <Field label="Charging time (fast)">
+        <Input
+          value={form.chargingTimeFast}
+          onChange={(e) => patch({ chargingTimeFast: e.target.value })}
+          placeholder="e.g. 1h (0–80%)"
+        />
+      </Field>
+      <Field label="Battery warranty">
+        <Input
+          value={form.batteryWarranty}
+          onChange={(e) => patch({ batteryWarranty: e.target.value })}
+          placeholder="e.g. 3 years / 30,000 km"
+        />
+      </Field>
+      <Field label="Riding modes" className="sm:col-span-2">
+        <Input
+          value={form.ridingModes}
+          onChange={(e) => patch({ ridingModes: e.target.value })}
+          placeholder="e.g. Eco, City, Sport"
+        />
+      </Field>
+      <CheckboxRow
+        label="Fast charging supported"
+        checked={form.fastCharging}
+        onChange={(v) => patch({ fastCharging: v })}
+      />
+      <CheckboxRow
+        label="Regenerative braking"
+        checked={form.regenerativeBraking}
+        onChange={(v) => patch({ regenerativeBraking: v })}
+      />
+    </>
+  );
+}
+
+function CombustionPowertrainFields({ form, patch }) {
+  return (
+    <>
       <Field label="Power (CC)">
         <Input
           type="number"
@@ -502,13 +642,6 @@ function EngineTab({ form, patch }) {
           value={form.engineType}
           onChange={(e) => patch({ engineType: e.target.value })}
           placeholder="e.g. Air-oil cooled, 4-stroke"
-        />
-      </Field>
-      <Field label="Max torque">
-        <Input
-          value={form.maxTorque}
-          onChange={(e) => patch({ maxTorque: e.target.value })}
-          placeholder="e.g. 27 Nm @ 4000 rpm"
         />
       </Field>
       <Field label="Cylinder count">
@@ -543,7 +676,7 @@ function EngineTab({ form, patch }) {
         <Input
           value={form.fuelType}
           onChange={(e) => patch({ fuelType: e.target.value })}
-          placeholder="Petrol / Electric"
+          placeholder="e.g. Petrol"
         />
       </Field>
       <Field label="Stroke">
@@ -558,6 +691,45 @@ function EngineTab({ form, patch }) {
           onChange={(e) => patch({ reserveFuelCapacity: e.target.value })}
         />
       </Field>
+      <Field label="Mileage (claimed)">
+        <Input
+          value={form.mileageClaimed}
+          onChange={(e) => patch({ mileageClaimed: e.target.value })}
+          placeholder="e.g. 41 kmpl"
+        />
+      </Field>
+      <Field label="Mileage (user)">
+        <Input
+          value={form.mileageUser}
+          onChange={(e) => patch({ mileageUser: e.target.value })}
+        />
+      </Field>
+    </>
+  );
+}
+
+function EngineTab({ form, patch }) {
+  const isEV = form.isElectric === 'Y';
+  return (
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <p className="sm:col-span-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
+        {isEV
+          ? 'Showing electric powertrain fields. Set “Electric?” to No on the Basics tab for engine fields.'
+          : 'Showing engine fields. Set “Electric?” to Yes on the Basics tab for battery and motor fields.'}
+      </p>
+      {isEV ? (
+        <ElectricPowertrainFields form={form} patch={patch} />
+      ) : (
+        <CombustionPowertrainFields form={form} patch={patch} />
+      )}
+      {/* Shared across both powertrains. */}
+      <Field label="Max torque">
+        <Input
+          value={form.maxTorque}
+          onChange={(e) => patch({ maxTorque: e.target.value })}
+          placeholder="e.g. 27 Nm @ 4000 rpm"
+        />
+      </Field>
       <Field label="0–60 / acceleration">
         <Input
           value={form.accelerationTime}
@@ -570,19 +742,6 @@ function EngineTab({ form, patch }) {
           value={form.topSpeed}
           onChange={(e) => patch({ topSpeed: e.target.value })}
           placeholder="e.g. 120 kmph"
-        />
-      </Field>
-      <Field label="Mileage (claimed)">
-        <Input
-          value={form.mileageClaimed}
-          onChange={(e) => patch({ mileageClaimed: e.target.value })}
-          placeholder="e.g. 41 kmpl"
-        />
-      </Field>
-      <Field label="Mileage (user)">
-        <Input
-          value={form.mileageUser}
-          onChange={(e) => patch({ mileageUser: e.target.value })}
         />
       </Field>
       <Field label="Front brake">
