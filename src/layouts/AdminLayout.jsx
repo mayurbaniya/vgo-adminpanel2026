@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
+  BadgePercent,
   Bike,
   Building2,
   ChartLine,
@@ -27,7 +28,9 @@ import { useAuth } from '@/auth/AuthContext.jsx';
 import { cn } from '@/lib/cn';
 
 // Single source of truth for nav. Editing here updates sidebar + topbar
-// breadcrumb + (eventually) command-K search.
+// breadcrumb + (eventually) command-K search. Items marked `staffAccess`
+// are visible to scoped staff (CITY_MANAGER / SALES_EXEC) — everything else
+// is super-admin only, mirroring the backend SecurityConfig split.
 const NAV_GROUPS = [
   {
     label: 'Overview',
@@ -46,11 +49,18 @@ const NAV_GROUPS = [
   {
     label: 'Leads & Sales',
     items: [
-      { to: '/leads', label: 'Leads', icon: ClipboardList },
+      { to: '/leads', label: 'Leads', icon: ClipboardList, staffAccess: true },
       { to: '/external-leads', label: 'External Leads', icon: ClipboardList },
-      { to: '/sales', label: 'Sales', icon: ChartLine },
+      { to: '/sales', label: 'Sales', icon: ChartLine, staffAccess: true },
       { to: '/loan-leads', label: 'Loan Leads', icon: Wallet },
       { to: '/finance', label: 'Finance', icon: HandCoins },
+    ],
+  },
+  {
+    label: 'Network',
+    items: [
+      { to: '/dealerships', label: 'Dealerships', icon: Building2, staffAccess: true },
+      { to: '/staff', label: 'Staff', icon: ShieldCheck },
     ],
   },
   {
@@ -65,6 +75,7 @@ const NAV_GROUPS = [
     label: 'Comms',
     items: [
       { to: '/home-banners', label: 'Home Banners', icon: ImageIcon },
+      { to: '/offers', label: 'Offers', icon: BadgePercent },
       { to: '/notifications', label: 'Notifications', icon: Megaphone },
     ],
   },
@@ -122,6 +133,14 @@ export default function AdminLayout() {
 }
 
 function SidebarContent({ onNavigate }) {
+  const { isSuperAdmin } = useAuth();
+  const groups = NAV_GROUPS.map((group) => ({
+    ...group,
+    items: isSuperAdmin
+      ? group.items
+      : group.items.filter((item) => item.staffAccess),
+  })).filter((group) => group.items.length > 0);
+
   return (
     <>
       <div className="flex h-16 items-center gap-2 border-b border-slate-100 px-5">
@@ -137,7 +156,7 @@ function SidebarContent({ onNavigate }) {
       </div>
 
       <nav className="flex-1 overflow-y-auto px-3 py-4">
-        {NAV_GROUPS.map((group) => (
+        {groups.map((group) => (
           <div key={group.label} className="mb-4">
             <div className="px-2 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
               {group.label}

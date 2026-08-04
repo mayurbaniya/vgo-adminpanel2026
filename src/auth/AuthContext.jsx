@@ -15,12 +15,17 @@ function readUser() {
   }
 }
 
-function hasAdminRole(role) {
-  if (!role) return false;
-  return role
-    .split(',')
-    .map((r) => r.trim().toUpperCase())
-    .includes('ADMIN');
+// Roles allowed into the panel. ADMIN sees everything; CITY_MANAGER and
+// SALES_EXEC land in the (server-scoped) leads/sales workspace.
+const PANEL_ROLES = ['ADMIN', 'CITY_MANAGER', 'SALES_EXEC'];
+
+function roleList(role) {
+  if (!role) return [];
+  return role.split(',').map((r) => r.trim().toUpperCase());
+}
+
+function hasPanelRole(role) {
+  return roleList(role).some((r) => PANEL_ROLES.includes(r));
 }
 
 export function AuthProvider({ children }) {
@@ -42,7 +47,7 @@ export function AuthProvider({ children }) {
 
     const userData = body.data || {};
 
-    if (!hasAdminRole(userData.role)) {
+    if (!hasPanelRole(userData.role)) {
       throw new Error(
         'This account is not authorized to access the admin panel.',
       );
@@ -84,15 +89,20 @@ export function AuthProvider({ children }) {
     }
   }, []);
 
+  const isSuperAdmin = roleList(user?.role).includes('ADMIN');
+
   const value = useMemo(
     () => ({
       isAuthenticated: Boolean(accessToken),
       accessToken,
       user,
+      // Scoped staff (CITY_MANAGER / SALES_EXEC) only get the leads/sales
+      // workspace; everything else in the panel is super-admin territory.
+      isSuperAdmin,
       login,
       logout,
     }),
-    [accessToken, user, login, logout],
+    [accessToken, user, isSuperAdmin, login, logout],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

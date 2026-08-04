@@ -177,6 +177,29 @@ export default function BrandsManager() {
     }
   }
 
+  async function handleSetRating(brand, rating) {
+    setMutatingId(brand.id);
+    setError('');
+    try {
+      const resp = await BrandsApi.setRating(brand.id, rating);
+      if (resp?.data?.status !== 'SUCCESS') {
+        throw new Error(resp?.data?.msg || 'Failed to update rating.');
+      }
+      const updated = resp.data.data;
+      setBrands((prev) =>
+        prev.map((b) =>
+          b.id === brand.id ? { ...b, rating: updated?.rating ?? rating } : b,
+        ),
+      );
+    } catch (err) {
+      setError(
+        err?.response?.data?.msg || err?.message || 'Failed to update rating.',
+      );
+    } finally {
+      setMutatingId(null);
+    }
+  }
+
   async function handleDelete(brand) {
     const ok = window.confirm(
       `Soft-delete brand "${brand.name}"? It will be hidden from this list.`,
@@ -289,6 +312,7 @@ export default function BrandsManager() {
               <tr>
                 <th className="px-4 py-3">Brand</th>
                 <th className="px-4 py-3">Logo</th>
+                <th className="px-4 py-3">Popularity</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3 text-right">Actions</th>
               </tr>
@@ -297,7 +321,7 @@ export default function BrandsManager() {
               {loading ? (
                 Array.from({ length: 6 }).map((_, i) => (
                   <tr key={i}>
-                    {[0, 1, 2, 3].map((c) => (
+                    {[0, 1, 2, 3, 4].map((c) => (
                       <td key={c} className="px-4 py-3.5">
                         <Skeleton className="h-3 w-3/4" />
                       </td>
@@ -306,7 +330,7 @@ export default function BrandsManager() {
                 ))
               ) : brands.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="px-4 py-12">
+                  <td colSpan={5} className="px-4 py-12">
                     <EmptyState
                       icon={Layers}
                       title={
@@ -339,6 +363,13 @@ export default function BrandsManager() {
                     </td>
                     <td className="px-4 py-3.5">
                       <BrandLogoThumb brand={brand} />
+                    </td>
+                    <td className="px-4 py-3.5">
+                      <RatingCell
+                        brand={brand}
+                        disabled={mutatingId !== null}
+                        onChange={(rating) => handleSetRating(brand, rating)}
+                      />
                     </td>
                     <td className="px-4 py-3.5">
                       <StatusBadge status={brand.status} />
@@ -470,6 +501,50 @@ function ToolbarSelect({ label, value, onChange, options }) {
         ))}
       </select>
     </label>
+  );
+}
+
+// Inline 1-10 popularity editor. Saves on change; the app's home screen ranks
+// its "Popular Brands" grid by this value (higher = more popular).
+function RatingCell({ brand, disabled, onChange }) {
+  const rated = brand.rating != null && brand.rating > 0;
+  return (
+    <div className="flex items-center gap-2">
+      <select
+        value={rated ? brand.rating : ''}
+        disabled={disabled}
+        onChange={(e) => {
+          const v = Number(e.target.value);
+          if (v >= 1 && v <= 10 && v !== brand.rating) onChange(v);
+        }}
+        className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-700 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 disabled:opacity-50"
+      >
+        <option value="" disabled>
+          —
+        </option>
+        {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
+          <option key={n} value={n}>
+            {n}
+          </option>
+        ))}
+      </select>
+      {rated ? (
+        <span
+          className={cn(
+            'inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold',
+            brand.rating >= 8
+              ? 'bg-emerald-50 text-emerald-700'
+              : brand.rating >= 5
+                ? 'bg-sky-50 text-sky-700'
+                : 'bg-slate-100 text-slate-600',
+          )}
+        >
+          {brand.rating}/10
+        </span>
+      ) : (
+        <span className="text-[11px] text-slate-400">Not rated</span>
+      )}
+    </div>
   );
 }
 

@@ -36,6 +36,9 @@ export const AuthService = {
 export const Dashboard = {
   overview: () => client.get('/admin/dashboard/overview'),
   monthStats: (params) => client.get('/admin/dashboard/month', { params }),
+  // Lead funnel, exec leaderboard, city split, lost reasons, action queue,
+  // recent audit events.
+  pipeline: () => client.get('/admin/dashboard/pipeline'),
 };
 
 // -----------------------------------------------------------------------------
@@ -85,6 +88,19 @@ export const Vehicles = {
     }),
   removeFeatured: (FVehicleID) =>
     client.delete('/admin/vehicle/featured-vehicle', { params: { FVehicleID } }),
+  // Public user-side read (works for any authenticated role) — used to
+  // prefill the sale price with the vehicle's on-road price for a city.
+  userOnRoadPrice: (vehicleID, cityID) =>
+    client.get('/user/vehicle/get-onroadprice', {
+      params: { vehicleID, cityID },
+    }),
+  // dealer commission — admin-only; never present in vehicle payloads.
+  getCommission: (vehicleID) =>
+    client.get('/admin/vehicle/commission', { params: { vehicleID } }),
+  setCommission: (vehicleID, amount) =>
+    client.put('/admin/vehicle/commission', null, {
+      params: { vehicleID, amount },
+    }),
   // on-road price
   getOnRoadPrices: (vehicleID) =>
     client.get('/admin/vehicle/on-road-prices', { params: { vehicleID } }),
@@ -172,6 +188,9 @@ export const Brands = {
     client.put('/admin/brand/enable', null, { params: { brandID } }),
   disable: (brandID) =>
     client.put('/admin/brand/disable', null, { params: { brandID } }),
+  // Popularity rating 1-10; drives the app's home "Popular Brands" grid.
+  setRating: (brandID, rating) =>
+    client.put('/admin/brand/rating', null, { params: { brandID, rating } }),
   delete: (brandID) =>
     client.delete('/admin/brand/delete', { params: { brandID } }),
   addImage: (brandID, formData) =>
@@ -197,10 +216,47 @@ export const Cities = {
 
 // -----------------------------------------------------------------------------
 // /admin/leads/  →  LeadsController
+// Results are scoped server-side by the caller's role (ADMIN all, CITY_MANAGER
+// their city, SALES_EXEC their dealership).
 // -----------------------------------------------------------------------------
 export const Leads = {
   getAll: (params) => client.get('/admin/leads/all', { params }),
   update: (data) => client.put('/admin/leads/update', data),
+  assign: (leadID, staffID) =>
+    client.put('/admin/leads/assign', null, { params: { leadID, staffID } }),
+  events: (leadID) => client.get('/admin/leads/events', { params: { leadID } }),
+  assignableStaff: () => client.get('/admin/leads/assignable-staff'),
+};
+
+// -----------------------------------------------------------------------------
+// /admin/staff/  →  StaffControllerAdmin  (super-admin only)
+// -----------------------------------------------------------------------------
+export const Staff = {
+  getAll: (params) => client.get('/admin/staff/all', { params }),
+  create: (data) => client.post('/admin/staff/create', data),
+  update: (staffID, data) =>
+    client.put('/admin/staff/update', data, { params: { staffID } }),
+  enable: (staffID) =>
+    client.put('/admin/staff/enable', null, { params: { staffID } }),
+  disable: (staffID) =>
+    client.put('/admin/staff/disable', null, { params: { staffID } }),
+};
+
+// -----------------------------------------------------------------------------
+// /admin/dealerships/  →  DealershipControllerAdmin
+// Reads are open to all staff roles; mutations are super-admin only.
+// -----------------------------------------------------------------------------
+export const Dealerships = {
+  getAll: () => client.get('/admin/dealerships/all'),
+  create: (data) => client.post('/admin/dealerships/create', data),
+  update: (dealershipID, data) =>
+    client.put('/admin/dealerships/update', data, { params: { dealershipID } }),
+  enable: (dealershipID) =>
+    client.put('/admin/dealerships/enable', null, { params: { dealershipID } }),
+  disable: (dealershipID) =>
+    client.put('/admin/dealerships/disable', null, { params: { dealershipID } }),
+  delete: (dealershipID) =>
+    client.delete('/admin/dealerships/delete', { params: { dealershipID } }),
 };
 
 // -----------------------------------------------------------------------------
@@ -348,6 +404,35 @@ export const HomeBanners = {
     client.get('/admin/home-banner/analytics', {
       params: { bannerID, ...params },
     }),
+};
+
+// -----------------------------------------------------------------------------
+// /admin/offers/  →  OfferControllerAdmin
+// -----------------------------------------------------------------------------
+export const Offers = {
+  getAll: (params) => client.get('/admin/offers/all', { params }),
+  byId: (offerID) =>
+    client.get('/admin/offers/by-id', { params: { offerID } }),
+  create: (data) => client.post('/admin/offers/create', data),
+  update: (offerID, data) =>
+    client.put('/admin/offers/update', data, { params: { offerID } }),
+  delete: (offerID) =>
+    client.delete('/admin/offers/delete', { params: { offerID } }),
+  enable: (offerID) =>
+    client.put('/admin/offers/enable', null, { params: { offerID } }),
+  disable: (offerID) =>
+    client.put('/admin/offers/disable', null, { params: { offerID } }),
+  addImage: (offerID, formData) =>
+    client.post('/admin/offers/add-image', formData, {
+      params: { offerID },
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
+  removeImage: (offerID) =>
+    client.delete('/admin/offers/remove-image', { params: { offerID } }),
+  // Public read reused by the admin Leads view: "which offers currently apply
+  // to this vehicle" (includes brand-wide and app-wide offers).
+  activeForVehicle: (vehicleId) =>
+    client.get('/user/offers/active', { params: { vehicleId } }),
 };
 
 // -----------------------------------------------------------------------------

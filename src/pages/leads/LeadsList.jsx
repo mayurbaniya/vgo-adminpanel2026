@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
+  BadgePercent,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
@@ -15,7 +16,9 @@ import { Input, Label } from '@/components/ui/Input.jsx';
 import { Modal } from '@/components/ui/Modal.jsx';
 import { PageHeader } from '@/components/ui/PageHeader.jsx';
 import { Skeleton } from '@/components/ui/Skeleton.jsx';
-import { Leads as LeadsApi } from '@/api/endpoints.js';
+import { Leads as LeadsApi, Offers as OffersApi } from '@/api/endpoints.js';
+import { useAuth } from '@/auth/AuthContext.jsx';
+import { RecordSaleFromLeadModal } from '@/components/sales/SaleFormShared.jsx';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { cn } from '@/lib/cn';
 
@@ -27,7 +30,45 @@ const SORT_OPTIONS = [
   { value: 'status', label: 'Status' },
 ];
 
-const LEAD_STATUSES = ['NEW', 'IN_PROGRESS', 'CLOSED', 'CANCELLED'];
+// Mirrors the backend LeadStage enum + its transition map. The select in the
+// edit modal only offers legal moves; the backend re-validates anyway.
+const LEAD_STAGES = [
+  'NEW',
+  'ASSIGNED',
+  'CONTACTED',
+  'TEST_RIDE',
+  'NEGOTIATION',
+  'BOOKED',
+  'WON',
+  'LOST',
+];
+// WON is not offered anywhere: a lead becomes WON only by recording its sale
+// (the "Record sale" action), which is what keeps every WON traceable to a
+// sale record. The backend rejects manual WON moves too.
+const STAGE_TRANSITIONS = {
+  NEW: ['ASSIGNED', 'CONTACTED', 'LOST'],
+  ASSIGNED: ['CONTACTED', 'LOST'],
+  CONTACTED: ['TEST_RIDE', 'NEGOTIATION', 'BOOKED', 'LOST'],
+  TEST_RIDE: ['NEGOTIATION', 'BOOKED', 'LOST'],
+  NEGOTIATION: ['BOOKED', 'LOST'],
+  BOOKED: ['LOST'],
+  WON: [],
+  LOST: ['CONTACTED'],
+};
+// Legacy values still stored on old rows — same mapping LeadStage.parse uses.
+const LEGACY_STAGE_MAP = {
+  ONGOING: 'CONTACTED',
+  IN_PROGRESS: 'CONTACTED',
+  CLOSED: 'LOST',
+  CANCELLED: 'LOST',
+  DELETED: 'LOST',
+};
+function normalizeStage(raw) {
+  const v = (raw || 'NEW').toUpperCase();
+  if (LEAD_STAGES.includes(v)) return v;
+  return LEGACY_STAGE_MAP[v] || 'NEW';
+}
+
 const LEAD_PRIORITIES = ['HIGH', 'MEDIUM', 'LOW']; // matches LeadPriority enum
 
 // Backend stores priority as int on the Interest entity
@@ -77,6 +118,10 @@ function toLocalInputValue(value) {
 }
 
 export default function LeadsList() {
+  const { user } = useAuth();
+  const isExec = (user?.role || '').includes('SALES_EXEC');
+  // Lifecycle trail is manager/admin territory; execs just work the lead.
+  const canViewHistory = !isExec;
   const [leads, setLeads] = useState([]);
   const [meta, setMeta] = useState({
     pageNumber: 0,
@@ -94,6 +139,8 @@ export default function LeadsList() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [editing, setEditing] = useState(null);
+  const [saleLead, setSaleLead] = useState(null);
+  const [historyLead, setHistoryLead] = useState(null);
 
   // Reset to page 0 whenever search or status filter changes.
   useEffect(() => {
@@ -225,10 +272,10 @@ export default function LeadsList() {
         <div className="flex flex-wrap gap-2 border-b border-slate-100 px-4 py-3 text-xs">
           {[
             { value: 'all', label: 'All' },
-            { value: 'NEW', label: 'New' },
-            { value: 'IN_PROGRESS', label: 'In progress' },
-            { value: 'CLOSED', label: 'Closed' },
-            { value: 'CANCELLED', label: 'Cancelled' },
+            ...LEAD_STAGES.map((s) => ({
+              value: s,
+              label: s.replace('_', ' '),
+            })),
           ].map((opt) => (
             <FilterPill
               key={opt.value}
@@ -247,6 +294,7 @@ export default function LeadsList() {
                 <th className="px-4 py-3">User</th>
                 <th className="px-4 py-3">Vehicle</th>
                 <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3">Branch / Assignee</th>
                 <th className="px-4 py-3">Priority</th>
                 <th className="px-4 py-3">Called</th>
                 <th className="px-4 py-3">Created</th>
@@ -257,7 +305,7 @@ export default function LeadsList() {
               {loading ? (
                 Array.from({ length: 6 }).map((_, i) => (
                   <tr key={i}>
-                    {[0, 1, 2, 3, 4, 5, 6].map((c) => (
+                    {[0, 1, 2, 3, 4, 5, 6, 7].map((c) => (
                       <td key={c} className="px-4 py-3.5">
                         <Skeleton className="h-3 w-3/4" />
                       </td>
@@ -266,7 +314,7 @@ export default function LeadsList() {
                 ))
               ) : leads.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-12">
+                  <td colSpan={8} className="px-4 py-12">
                     <EmptyState
                       icon={Sparkles}
                       title={
@@ -315,9 +363,37 @@ export default function LeadsList() {
                           Not interested
                         </div>
                       )}
+                      {lead.offerTitle && (
+                        <div
+                          className="mt-1 inline-flex max-w-[180px] items-center gap-1 rounded-full bg-fuchsia-50 px-2 py-0.5 text-[11px] font-semibold text-fuchsia-700"
+                          title={`Lead came from offer: ${lead.offerTitle}`}
+                        >
+                          <BadgePercent className="h-3 w-3 shrink-0" />
+                          <span className="truncate">{lead.offerTitle}</span>
+                        </div>
+                      )}
                     </td>
                     <td className="px-4 py-3.5">
                       <LeadStatusBadge status={lead.status} />
+                      {normalizeStage(lead.status) === 'LOST' && lead.lostReason && (
+                        <div
+                          className="mt-1 max-w-[160px] truncate text-[11px] text-slate-400"
+                          title={lead.lostReason}
+                        >
+                          {lead.lostReason}
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-4 py-3.5">
+                      <div className="text-xs text-slate-700">
+                        {lead.dealershipName || (
+                          <span className="text-slate-400">Unrouted</span>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-slate-500">
+                        {lead.cityName || '—'}
+                        {lead.assignedToName ? ` · ${lead.assignedToName}` : ''}
+                      </div>
                     </td>
                     <td className="px-4 py-3.5">
                       <PriorityBadge priority={lead.priority} />
@@ -333,13 +409,35 @@ export default function LeadsList() {
                       {formatDate(lead.time)}
                     </td>
                     <td className="px-4 py-3.5 text-right">
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => setEditing(lead)}
-                      >
-                        Edit
-                      </Button>
+                      <div className="inline-flex gap-2">
+                        {normalizeStage(lead.status) !== 'WON' && (
+                          <Button
+                            size="sm"
+                            onClick={() => setSaleLead(lead)}
+                          >
+                            Record sale
+                          </Button>
+                        )}
+                        {/* A WON deal is done — execs can't reopen or edit it. */}
+                        {!(isExec && normalizeStage(lead.status) === 'WON') && (
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => setEditing(lead)}
+                          >
+                            Edit
+                          </Button>
+                        )}
+                        {canViewHistory && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setHistoryLead(lead)}
+                          >
+                            History
+                          </Button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -396,6 +494,27 @@ export default function LeadsList() {
           setEditing(null);
         }}
       />
+
+      <LeadHistoryModal
+        lead={historyLead}
+        onClose={() => setHistoryLead(null)}
+      />
+
+      <RecordSaleFromLeadModal
+        lead={saleLead}
+        onClose={() => setSaleLead(null)}
+        onSaved={() => {
+          // The backend moved the lead to WON alongside the sale.
+          setLeads((prev) =>
+            prev.map((l) =>
+              l.interestID === saleLead?.interestID
+                ? { ...l, status: 'WON' }
+                : l,
+            ),
+          );
+          setSaleLead(null);
+        }}
+      />
     </div>
   );
 }
@@ -443,15 +562,16 @@ function ToolbarSelect({ label, value, onChange, options }) {
 }
 
 function LeadStatusBadge({ status }) {
-  const s = (status || 'NEW').toUpperCase();
+  const s = normalizeStage(status);
   const map = {
     NEW: { tone: 'bg-sky-50 text-sky-700', dot: 'bg-sky-500' },
-    IN_PROGRESS: {
-      tone: 'bg-amber-50 text-amber-700',
-      dot: 'bg-amber-500',
-    },
-    CLOSED: { tone: 'bg-emerald-50 text-emerald-700', dot: 'bg-emerald-500' },
-    CANCELLED: { tone: 'bg-slate-100 text-slate-500', dot: 'bg-slate-400' },
+    ASSIGNED: { tone: 'bg-indigo-50 text-indigo-700', dot: 'bg-indigo-500' },
+    CONTACTED: { tone: 'bg-amber-50 text-amber-700', dot: 'bg-amber-500' },
+    TEST_RIDE: { tone: 'bg-violet-50 text-violet-700', dot: 'bg-violet-500' },
+    NEGOTIATION: { tone: 'bg-orange-50 text-orange-700', dot: 'bg-orange-500' },
+    BOOKED: { tone: 'bg-teal-50 text-teal-700', dot: 'bg-teal-500' },
+    WON: { tone: 'bg-emerald-50 text-emerald-700', dot: 'bg-emerald-500' },
+    LOST: { tone: 'bg-slate-100 text-slate-500', dot: 'bg-slate-400' },
   };
   const cfg = map[s] || { tone: 'bg-slate-50 text-slate-500', dot: 'bg-slate-300' };
   return (
@@ -514,12 +634,81 @@ function CallStatus({ called, answered, lastCallTime }) {
   );
 }
 
+// "Active offers on this vehicle" — shown in the lead editor regardless of
+// how the lead arrived, so no customer conversation misses an applicable
+// offer (covers vehicle-specific, brand-wide and app-wide offers).
+function ActiveOffersStrip({ vehicleId }) {
+  const [offers, setOffers] = useState([]);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    if (!vehicleId) {
+      setOffers([]);
+      setLoaded(true);
+      return;
+    }
+    let cancelled = false;
+    setLoaded(false);
+    OffersApi.activeForVehicle(vehicleId)
+      .then((resp) => {
+        if (cancelled) return;
+        if (resp?.data?.status === 'SUCCESS') {
+          setOffers(resp.data.data || []);
+        }
+      })
+      .catch(() => {
+        // Non-critical chrome — a fetch failure just hides the strip.
+      })
+      .finally(() => {
+        if (!cancelled) setLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [vehicleId]);
+
+  if (!loaded || offers.length === 0) return null;
+
+  return (
+    <div className="rounded-lg border border-fuchsia-100 bg-fuchsia-50/60 px-3 py-2 text-xs">
+      <div className="mb-1 flex items-center gap-1 font-semibold uppercase tracking-wider text-fuchsia-700">
+        <BadgePercent className="h-3 w-3" />
+        Active offers on this vehicle
+      </div>
+      <ul className="space-y-0.5 text-slate-700">
+        {offers.map((o) => (
+          <li key={o.id}>
+            <span className="font-medium">{o.title}</span>
+            {o.benefitText && (
+              <span className="text-slate-500"> — {o.benefitText}</span>
+            )}
+            {!o.vehicle && (
+              <span className="text-slate-400">
+                {' '}
+                ({o.brand ? 'brand-wide' : 'app-wide'})
+              </span>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function EditLeadModal({ lead, onClose, onSaved }) {
+  const { user, isSuperAdmin } = useAuth();
+  const canAssign = !(user?.role || '').includes('SALES_EXEC');
+  // Admin supervises rather than works leads: their editor is just stage,
+  // priority, notes and assignment. The call-tracking fields belong to the
+  // manager/exec actually making the calls (their current values are still
+  // sent unchanged on save, so nothing gets wiped).
+  const showWorkingFields = !isSuperAdmin;
   const [form, setForm] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [serverError, setServerError] = useState('');
 
   const open = lead !== null;
+  const currentStage = lead ? normalizeStage(lead.status) : 'NEW';
 
   useEffect(() => {
     if (!lead) {
@@ -530,12 +719,17 @@ function EditLeadModal({ lead, onClose, onSaved }) {
     }
     setForm({
       interested: Boolean(lead.interested),
-      status: LEAD_STATUSES.includes(lead.status) ? lead.status : 'NEW',
+      status: normalizeStage(lead.status),
       priority: priorityIntToEnum(lead.priority),
       didAdminCalled: Boolean(lead.didAdminCalled),
       didUserAnswered: Boolean(lead.didUserAnswered),
       lastCallTime: toLocalInputValue(lead.lastCallTime),
       notes: lead.notes || '',
+      lostReason: lead.lostReason || '',
+      bookingAmount:
+        lead.bookingAmount !== null && lead.bookingAmount !== undefined
+          ? String(lead.bookingAmount)
+          : '',
     });
     setServerError('');
     setSubmitting(false);
@@ -561,6 +755,11 @@ function EditLeadModal({ lead, onClose, onSaved }) {
         lastCallTime: form.lastCallTime ? form.lastCallTime + ':00' : null,
         notes: form.notes,
         priority: form.priority,
+        lostReason: form.status === 'LOST' ? form.lostReason.trim() : null,
+        bookingAmount:
+          form.status === 'BOOKED' && form.bookingAmount !== ''
+            ? Number(form.bookingAmount)
+            : null,
       };
       const resp = await LeadsApi.update(body);
       if (resp?.data?.status !== 'SUCCESS') {
@@ -576,6 +775,9 @@ function EditLeadModal({ lead, onClose, onSaved }) {
         lastCallTime: updated?.lastCallTime ?? body.lastCallTime,
         notes: updated?.notes ?? body.notes,
         priority: updated?.priority,
+        lostReason: updated?.lostReason ?? body.lostReason,
+        bookingAmount: updated?.bookingAmount ?? body.bookingAmount,
+        bookedOn: updated?.bookedOn,
       });
     } catch (err) {
       setServerError(
@@ -603,7 +805,10 @@ function EditLeadModal({ lead, onClose, onSaved }) {
             type="submit"
             form="edit-lead-form"
             loading={submitting}
-            disabled={submitting}
+            disabled={
+              submitting ||
+              (form.status === 'LOST' && !form.lostReason.trim())
+            }
           >
             Save changes
           </Button>
@@ -618,20 +823,40 @@ function EditLeadModal({ lead, onClose, onSaved }) {
           <div>
             {lead.user?.phone || '—'} · {lead.user?.email || '—'}
           </div>
+          {lead.offerTitle && (
+            <div className="mt-1 flex items-center gap-1 font-semibold text-fuchsia-700">
+              <BadgePercent className="h-3 w-3" />
+              Lead came from offer: {lead.offerTitle}
+            </div>
+          )}
         </div>
+
+        <ActiveOffersStrip vehicleId={lead.vehicle?.id} />
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
-            <Label htmlFor="lead-status">Status</Label>
+            <Label htmlFor="lead-status">Stage</Label>
             <SelectField
               id="lead-status"
               value={form.status}
               onChange={(v) => patch({ status: v })}
-              options={LEAD_STATUSES.map((s) => ({
-                value: s,
-                label: s.replace('_', ' '),
-              }))}
+              options={[currentStage, ...(STAGE_TRANSITIONS[currentStage] || [])].map(
+                (s) => ({
+                  value: s,
+                  label: s.replace('_', ' '),
+                }),
+              )}
             />
+            {currentStage === 'WON' ? (
+              <div className="mt-1 text-[11px] text-slate-400">
+                WON is terminal — this lead has a recorded sale.
+              </div>
+            ) : (
+              <div className="mt-1 text-[11px] text-slate-400">
+                To close as WON, use the lead's "Record sale" button — the
+                sale record moves it to WON automatically.
+              </div>
+            )}
           </div>
           <div>
             <Label htmlFor="lead-priority">Priority</Label>
@@ -644,45 +869,78 @@ function EditLeadModal({ lead, onClose, onSaved }) {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <CheckboxField
-            id="lead-interested"
-            label="User is interested"
-            checked={form.interested}
-            onChange={(v) => patch({ interested: v })}
-          />
-          <CheckboxField
-            id="lead-called"
-            label="Admin called"
-            checked={form.didAdminCalled}
-            onChange={(v) =>
-              patch({
-                didAdminCalled: v,
-                // Reset answered when un-checking called — backend stores both
-                // independently but the combination "not called + answered"
-                // makes no sense.
-                didUserAnswered: v ? form.didUserAnswered : false,
-              })
-            }
-          />
-          <CheckboxField
-            id="lead-answered"
-            label="User answered"
-            checked={form.didUserAnswered}
-            onChange={(v) => patch({ didUserAnswered: v })}
-            disabled={!form.didAdminCalled}
-          />
+        {form.status === 'LOST' && (
           <div>
-            <Label htmlFor="lead-last-call">Last call time</Label>
-            <input
-              id="lead-last-call"
-              type="datetime-local"
-              value={form.lastCallTime}
-              onChange={(e) => patch({ lastCallTime: e.target.value })}
-              className="block w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+            <Label htmlFor="lead-lost-reason">Lost reason (required)</Label>
+            <Input
+              id="lead-lost-reason"
+              placeholder="e.g. bought elsewhere, budget, no response…"
+              value={form.lostReason}
+              onChange={(e) => patch({ lostReason: e.target.value })}
+              maxLength={160}
             />
           </div>
-        </div>
+        )}
+
+        {form.status === 'BOOKED' && (
+          <div>
+            <Label htmlFor="lead-booking-amount">Booking / token amount (₹)</Label>
+            <Input
+              id="lead-booking-amount"
+              type="number"
+              min="0"
+              placeholder="e.g. 5000"
+              value={form.bookingAmount}
+              onChange={(e) => patch({ bookingAmount: e.target.value })}
+            />
+          </div>
+        )}
+
+        {canAssign && (
+          <AssignSection lead={lead} onAssigned={onSaved} />
+        )}
+
+        {showWorkingFields && (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <CheckboxField
+              id="lead-interested"
+              label="User is interested"
+              checked={form.interested}
+              onChange={(v) => patch({ interested: v })}
+            />
+            <CheckboxField
+              id="lead-called"
+              label="Admin called"
+              checked={form.didAdminCalled}
+              onChange={(v) =>
+                patch({
+                  didAdminCalled: v,
+                  // Reset answered when un-checking called — backend stores both
+                  // independently but the combination "not called + answered"
+                  // makes no sense.
+                  didUserAnswered: v ? form.didUserAnswered : false,
+                })
+              }
+            />
+            <CheckboxField
+              id="lead-answered"
+              label="User answered"
+              checked={form.didUserAnswered}
+              onChange={(v) => patch({ didUserAnswered: v })}
+              disabled={!form.didAdminCalled}
+            />
+            <div>
+              <Label htmlFor="lead-last-call">Last call time</Label>
+              <input
+                id="lead-last-call"
+                type="datetime-local"
+                value={form.lastCallTime}
+                onChange={(e) => patch({ lastCallTime: e.target.value })}
+                className="block w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+              />
+            </div>
+          </div>
+        )}
 
         <div>
           <Label htmlFor="lead-notes">Notes</Label>
@@ -703,6 +961,203 @@ function EditLeadModal({ lead, onClose, onSaved }) {
         )}
       </form>
     </Modal>
+  );
+}
+
+// Complete lifecycle trail for one lead — every stage move, assignment, and
+// the closing sale, newest first. Admin + city manager only (the button is
+// hidden for execs and the backend rejects them too).
+function LeadHistoryModal({ lead, onClose }) {
+  const open = lead !== null;
+  const [events, setEvents] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    setLoading(true);
+    setError('');
+    LeadsApi.events(lead.interestID)
+      .then((resp) => {
+        if (cancelled) return;
+        if (resp?.data?.status === 'SUCCESS') {
+          setEvents(resp.data.data || []);
+        } else {
+          throw new Error(resp?.data?.msg || 'Failed to load history.');
+        }
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setError(
+          err?.response?.data?.msg || err?.message || 'Failed to load history.',
+        );
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, lead?.interestID]);
+
+  if (!open) return null;
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      size="lg"
+      title={`Lead #${lead.interestID} history — ${lead.user?.name || ''}`}
+      footer={
+        <Button variant="secondary" onClick={onClose}>
+          Close
+        </Button>
+      }
+    >
+      <div className="space-y-1 text-xs text-slate-500">
+        <div>
+          Created {formatDateTime(lead.time)} · {lead.vehicle?.model || '—'}
+          {lead.cityName ? ` · ${lead.cityName}` : ''}
+          {lead.dealershipName ? ` · ${lead.dealershipName}` : ''}
+        </div>
+      </div>
+      <div className="mt-3">
+        {loading ? (
+          <div className="space-y-2">
+            {[0, 1, 2].map((i) => (
+              <Skeleton key={i} className="h-10 w-full" />
+            ))}
+          </div>
+        ) : error ? (
+          <div className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
+            {error}
+          </div>
+        ) : events.length === 0 ? (
+          <div className="rounded-lg border border-slate-100 bg-slate-50/60 px-3 py-4 text-center text-xs text-slate-500">
+            No recorded activity yet — events start when the lead is assigned
+            or its stage changes.
+          </div>
+        ) : (
+          <ol className="relative ml-2 space-y-4 border-l border-slate-200 pl-4">
+            {events.map((ev) => (
+              <li key={ev.id} className="relative">
+                <span className="absolute -left-[21.5px] top-1 h-2.5 w-2.5 rounded-full border-2 border-white bg-brand-500" />
+                <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                  <LeadStatusBadge status={ev.fromStatus} />
+                  <span className="text-slate-400">→</span>
+                  <LeadStatusBadge status={ev.toStatus} />
+                </div>
+                <div className="mt-0.5 text-[11px] text-slate-500">
+                  {ev.actor?.name || 'System'} · {formatDateTime(ev.created)}
+                </div>
+                {ev.note && (
+                  <div className="mt-0.5 text-xs italic text-slate-600">
+                    “{ev.note}”
+                  </div>
+                )}
+              </li>
+            ))}
+          </ol>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+// Assignment control inside the lead editor — visible to ADMIN and
+// CITY_MANAGER (backend rejects SALES_EXEC anyway). Assigning routes the
+// lead to the assignee's dealership and moves NEW → ASSIGNED.
+function AssignSection({ lead, onAssigned }) {
+  const [staff, setStaff] = useState([]);
+  const [selected, setSelected] = useState('');
+  const [assigning, setAssigning] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    LeadsApi.assignableStaff()
+      .then((resp) => {
+        if (cancelled) return;
+        if (resp?.data?.status === 'SUCCESS') setStaff(resp.data.data || []);
+      })
+      .catch(() => {
+        // Non-critical — section just stays empty.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    setSelected(lead?.assignedToID ? String(lead.assignedToID) : '');
+    setError('');
+  }, [lead]);
+
+  if (staff.length === 0) return null;
+
+  async function handleAssign() {
+    if (!selected) return;
+    setAssigning(true);
+    setError('');
+    try {
+      const resp = await LeadsApi.assign(lead.interestID, Number(selected));
+      if (resp?.data?.status !== 'SUCCESS') {
+        throw new Error(resp?.data?.msg || 'Failed to assign lead.');
+      }
+      const updated = resp.data.data;
+      onAssigned({
+        interestID: lead.interestID,
+        status: updated?.status,
+        assignedToID: updated?.assignedToID,
+        assignedToName: updated?.assignedToName,
+        dealershipID: updated?.dealershipID,
+        dealershipName: updated?.dealershipName,
+        cityID: updated?.cityID,
+        cityName: updated?.cityName,
+      });
+    } catch (err) {
+      setError(err?.response?.data?.msg || err?.message || 'Failed to assign lead.');
+      setAssigning(false);
+    }
+  }
+
+  return (
+    <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-3">
+      <Label htmlFor="lead-assignee">Assign to</Label>
+      <div className="flex gap-2">
+        <select
+          id="lead-assignee"
+          value={selected}
+          onChange={(e) => setSelected(e.target.value)}
+          className="block w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+        >
+          <option value="">Select a staff member…</option>
+          {staff.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.name} —{' '}
+              {s.role === 'SALES_EXEC'
+                ? s.dealership?.name || 'no dealership'
+                : `${s.staffCity?.name || '—'} (manager)`}
+            </option>
+          ))}
+        </select>
+        <Button
+          type="button"
+          variant="secondary"
+          loading={assigning}
+          disabled={assigning || !selected || Number(selected) === lead?.assignedToID}
+          onClick={handleAssign}
+        >
+          Assign
+        </Button>
+      </div>
+      {error && (
+        <div className="mt-2 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
+          {error}
+        </div>
+      )}
+    </div>
   );
 }
 

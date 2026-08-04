@@ -16,11 +16,17 @@ import { Modal } from '@/components/ui/Modal.jsx';
 import { PageHeader } from '@/components/ui/PageHeader.jsx';
 import { Skeleton } from '@/components/ui/Skeleton.jsx';
 import {
+  Leads as LeadsApi,
   Sales as SalesApi,
   Users as UsersApi,
   Vehicles as VehiclesApi,
 } from '@/api/endpoints.js';
 import { useAuth } from '@/auth/AuthContext';
+import {
+  EMPTY_SALE_FORM,
+  SaleFields,
+  saleBodyFromForm,
+} from '@/components/sales/SaleFormShared.jsx';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { cn } from '@/lib/cn';
 
@@ -76,7 +82,7 @@ function readPageMeta(payload, fallbackPage) {
 }
 
 export default function SalesList() {
-  const { user } = useAuth();
+  const { user, isSuperAdmin } = useAuth();
   const adminID = user?.id;
 
   const [sales, setSales] = useState([]);
@@ -155,12 +161,21 @@ export default function SalesList() {
     <div className="space-y-6">
       <PageHeader
         title="Sales"
-        subtitle="Closed sales recorded against converted leads."
+        subtitle={
+          isSuperAdmin
+            ? 'Closed sales recorded against converted leads.'
+            : 'Your branch’s recorded sales. To record one, open the lead on the Leads page and use "Record sale".'
+        }
         actions={
-          <Button onClick={() => setAddOpen(true)} disabled={!adminID}>
-            <Plus className="h-4 w-4" />
-            Record sale
-          </Button>
+          // The walk-in flow needs the admin-only user/vehicle search
+          // endpoints, so it's super-admin only. Staff record sales from
+          // the lead itself on the Leads page.
+          isSuperAdmin && (
+            <Button onClick={() => setAddOpen(true)} disabled={!adminID}>
+              <Plus className="h-4 w-4" />
+              Record sale
+            </Button>
+          )
         }
       />
 
@@ -294,6 +309,8 @@ export default function SalesList() {
                       {Number(s.earned) > 0 && (
                         <div className="text-xs text-emerald-700">
                           earned {s.earned}
+                          {s.execCommission != null &&
+                            ` · exec cut ${s.execCommission}`}
                         </div>
                       )}
                       {s.paymentMethod && (
@@ -400,25 +417,12 @@ export default function SalesList() {
 // -----------------------------------------------------------------------------
 // Add sale — full SaleDTO with user picker + vehicle picker.
 // -----------------------------------------------------------------------------
-const EMPTY_SALE_FORM = {
-  saleDate: '',
-  deliveryDate: '',
-  salePrice: '',
-  paymentMethod: '',
-  paymentStatus: 'Pending',
-  transactionId: '',
-  saleStatus: 'Completed',
-  invoiceNumber: '',
-  notes: '',
-  earned: '',
-  vehicleNumber: '',
-  chesisNumber: '',
-};
-
 function AddSaleModal({ open, adminID, onClose, onSaved }) {
   const [form, setForm] = useState(EMPTY_SALE_FORM);
   const [selectedUser, setSelectedUser] = useState(null);
   const [selectedVehicle, setSelectedVehicle] = useState(null);
+  const [matchedLead, setMatchedLead] = useState(null);
+  const [linkLead, setLinkLead] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [serverError, setServerError] = useState('');
 
@@ -427,9 +431,46 @@ function AddSaleModal({ open, adminID, onClose, onSaved }) {
     setForm(EMPTY_SALE_FORM);
     setSelectedUser(null);
     setSelectedVehicle(null);
+    setMatchedLead(null);
+    setLinkLead(true);
     setSubmitting(false);
     setServerError('');
   }, [open]);
+
+  // When customer + vehicle are picked, look for their open lead so the sale
+  // closes the pipeline instead of leaving an orphan WON-less lead.
+  useEffect(() => {
+    setMatchedLead(null);
+    if (!selectedUser || !selectedVehicle) return;
+    let cancelled = false;
+    LeadsApi.getAll({
+      page: 0,
+      size: 50,
+      sortBy: 'time',
+      sortDir: 'desc',
+      q: selectedUser.email || selectedUser.phone || selectedUser.name,
+    })
+      .then((resp) => {
+        if (cancelled) return;
+        if (resp?.data?.status !== 'SUCCESS') return;
+        const match = (resp.data.data?.content || []).find(
+          (l) =>
+            l.user?.id === selectedUser.id &&
+            l.vehicle?.id === selectedVehicle.id &&
+            (l.status || '').toUpperCase() !== 'WON',
+        );
+        if (match) {
+          setMatchedLead(match);
+          setLinkLead(true);
+        }
+      })
+      .catch(() => {
+        // Lead lookup is best-effort — the sale can be recorded without it.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedUser, selectedVehicle]);
 
   function patch(next) {
     setForm((f) => ({ ...f, ...next }));
@@ -451,19 +492,10 @@ function AddSaleModal({ open, adminID, onClose, onSaved }) {
         adminID,
         userID: selectedUser.id,
         vehicleID: selectedVehicle.id,
+        // Linking transitions the lead to WON server-side.
+        leadID: linkLead && matchedLead ? matchedLead.interestID : null,
         // Backend SaleDTO uses LocalDate / BigDecimal / String.
-        saleDate: form.saleDate || null,
-        deliveryDate: form.deliveryDate || null,
-        salePrice: form.salePrice.trim(),
-        paymentMethod: form.paymentMethod.trim(),
-        paymentStatus: form.paymentStatus,
-        transactionId: form.transactionId.trim(),
-        saleStatus: form.saleStatus,
-        invoiceNumber: form.invoiceNumber.trim(),
-        notes: form.notes.trim(),
-        earned: form.earned.trim(),
-        vehicleNumber: form.vehicleNumber.trim(),
-        chesisNumber: form.chesisNumber.trim(),
+        ...saleBodyFromForm(form),
       };
       const resp = await SalesApi.add(body);
       if (resp?.data?.status !== 'SUCCESS') {
@@ -523,6 +555,24 @@ function AddSaleModal({ open, adminID, onClose, onSaved }) {
           </div>
         </div>
 
+        {matchedLead && (
+          <label className="flex items-start gap-2 rounded-lg border border-emerald-100 bg-emerald-50/70 px-3 py-2.5 text-xs text-emerald-800">
+            <input
+              type="checkbox"
+              checked={linkLead}
+              onChange={(e) => setLinkLead(e.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-emerald-300 text-emerald-600 focus:ring-emerald-500"
+            />
+            <span>
+              <span className="font-semibold">
+                Open lead found (#{matchedLead.interestID},{' '}
+                {(matchedLead.status || 'NEW').replace('_', ' ')})
+              </span>{' '}
+              — link this sale to it and mark the lead WON.
+            </span>
+          </label>
+        )}
+
         <SaleFields form={form} patch={patch} />
 
         {serverError && (
@@ -575,20 +625,7 @@ function EditSaleModal({ sale, adminID, onClose, onSaved }) {
     setSubmitting(true);
     setServerError('');
     try {
-      const body = {
-        saleDate: form.saleDate || null,
-        deliveryDate: form.deliveryDate || null,
-        salePrice: form.salePrice.trim(),
-        paymentMethod: form.paymentMethod.trim(),
-        paymentStatus: form.paymentStatus,
-        transactionId: form.transactionId.trim(),
-        saleStatus: form.saleStatus,
-        invoiceNumber: form.invoiceNumber.trim(),
-        notes: form.notes.trim(),
-        earned: form.earned.trim(),
-        vehicleNumber: form.vehicleNumber.trim(),
-        chesisNumber: form.chesisNumber.trim(),
-      };
+      const body = saleBodyFromForm(form);
       const resp = await SalesApi.update(adminID, sale.id, body);
       if (resp?.data?.status !== 'SUCCESS') {
         throw new Error(resp?.data?.msg || 'Failed to update sale.');
@@ -645,124 +682,6 @@ function EditSaleModal({ sale, adminID, onClose, onSaved }) {
         )}
       </form>
     </Modal>
-  );
-}
-
-// -----------------------------------------------------------------------------
-// Shared sale field block (12 fields). Used by both add and edit.
-// -----------------------------------------------------------------------------
-function SaleFields({ form, patch }) {
-  return (
-    <div className="space-y-3">
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <div>
-          <Label>Sale price *</Label>
-          <Input
-            value={form.salePrice}
-            onChange={(e) => patch({ salePrice: e.target.value })}
-            placeholder="e.g. 250000.00"
-          />
-        </div>
-        <div>
-          <Label>Earned (commission)</Label>
-          <Input
-            value={form.earned}
-            onChange={(e) => patch({ earned: e.target.value })}
-            placeholder="e.g. 5000"
-          />
-        </div>
-        <div>
-          <Label>Sale date</Label>
-          <input
-            type="date"
-            value={form.saleDate}
-            onChange={(e) => patch({ saleDate: e.target.value })}
-            className="block w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
-          />
-        </div>
-        <div>
-          <Label>Delivery date</Label>
-          <input
-            type="date"
-            value={form.deliveryDate}
-            onChange={(e) => patch({ deliveryDate: e.target.value })}
-            className="block w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
-          />
-        </div>
-        <div>
-          <Label>Payment status</Label>
-          <select
-            value={form.paymentStatus}
-            onChange={(e) => patch({ paymentStatus: e.target.value })}
-            className="block w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
-          >
-            {['Paid', 'Pending', 'Installments', 'Refunded'].map((s) => (
-              <option key={s}>{s}</option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <Label>Sale status</Label>
-          <select
-            value={form.saleStatus}
-            onChange={(e) => patch({ saleStatus: e.target.value })}
-            className="block w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
-          >
-            {['Completed', 'Pending', 'Canceled'].map((s) => (
-              <option key={s}>{s}</option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <Label>Payment method</Label>
-          <Input
-            value={form.paymentMethod}
-            onChange={(e) => patch({ paymentMethod: e.target.value })}
-            placeholder="Cash / Bank Transfer / EMI"
-          />
-        </div>
-        <div>
-          <Label>Transaction ID</Label>
-          <Input
-            value={form.transactionId}
-            onChange={(e) => patch({ transactionId: e.target.value })}
-            placeholder="Bank / UPI ref"
-          />
-        </div>
-        <div>
-          <Label>Invoice number</Label>
-          <Input
-            value={form.invoiceNumber}
-            onChange={(e) => patch({ invoiceNumber: e.target.value })}
-          />
-        </div>
-        <div>
-          <Label>Vehicle number</Label>
-          <Input
-            value={form.vehicleNumber}
-            onChange={(e) => patch({ vehicleNumber: e.target.value })}
-            placeholder="Reg. plate"
-          />
-        </div>
-        <div className="sm:col-span-2">
-          <Label>Chassis number</Label>
-          <Input
-            value={form.chesisNumber}
-            onChange={(e) => patch({ chesisNumber: e.target.value })}
-          />
-        </div>
-      </div>
-      <div>
-        <Label>Notes</Label>
-        <textarea
-          rows={2}
-          value={form.notes}
-          onChange={(e) => patch({ notes: e.target.value })}
-          placeholder="Anything worth recording about this sale…"
-          className="block w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
-        />
-      </div>
-    </div>
   );
 }
 

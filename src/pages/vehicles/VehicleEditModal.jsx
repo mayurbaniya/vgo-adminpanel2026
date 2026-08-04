@@ -1120,6 +1120,102 @@ function ImagesPanel({ vehicleID, images, onImagesChanged, onError, error }) {
 //     ex-showroom can't be edited after creation through this endpoint, so
 //     the row only exposes inline edit on onRoadPrice.
 // -----------------------------------------------------------------------------
+// Platform's per-unit dealer commission for this model (what the showroom
+// pays us on each sale, typically ₹3-7k). Admin-eyes-only: the backend keeps
+// it out of every vehicle payload; it's readable/writable solely through the
+// dedicated commission endpoints. Sale recording uses it to auto-compute the
+// platform's earning and the sales exec's cut.
+function DealerCommissionCard({ vehicleID }) {
+  const [value, setValue] = useState('');
+  const [loaded, setLoaded] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [savedFlash, setSavedFlash] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoaded(false);
+    VehiclesApi.getCommission(vehicleID)
+      .then((resp) => {
+        if (cancelled) return;
+        if (resp?.data?.status === 'SUCCESS') {
+          setValue(resp.data.data != null ? String(resp.data.data) : '');
+        }
+      })
+      .catch(() => {
+        // Card still renders; saving will surface real errors.
+      })
+      .finally(() => {
+        if (!cancelled) setLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [vehicleID]);
+
+  async function handleSave() {
+    setSaving(true);
+    setError('');
+    setSavedFlash(false);
+    try {
+      const amount = value.trim() === '' ? null : value.trim();
+      const resp = await VehiclesApi.setCommission(vehicleID, amount);
+      if (resp?.data?.status !== 'SUCCESS') {
+        throw new Error(resp?.data?.msg || 'Failed to save commission.');
+      }
+      setSavedFlash(true);
+      setTimeout(() => setSavedFlash(false), 2000);
+    } catch (err) {
+      setError(
+        err?.response?.data?.msg || err?.message || 'Failed to save commission.',
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="rounded-lg border border-indigo-100 bg-indigo-50/50 p-3">
+      <div className="mb-1 text-xs font-semibold uppercase tracking-wider text-indigo-700">
+        Dealer commission (admin-only)
+      </div>
+      <div className="mb-2 text-[11px] text-slate-500">
+        What the showroom pays us per unit sold. Never shown in the app or to
+        staff — sales record it automatically: platform earns this amount, the
+        sales exec gets their percentage of it.
+      </div>
+      <div className="flex items-center gap-2">
+        <Input
+          type="number"
+          min="0"
+          placeholder="e.g. 5000"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          disabled={!loaded}
+          className="max-w-[180px]"
+        />
+        <Button
+          size="sm"
+          variant="secondary"
+          loading={saving}
+          disabled={saving || !loaded}
+          onClick={handleSave}
+        >
+          Save
+        </Button>
+        {savedFlash && (
+          <span className="text-xs font-semibold text-emerald-600">Saved</span>
+        )}
+      </div>
+      {error && (
+        <div className="mt-2 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
+          {error}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PricingPanel({ vehicleID }) {
   const [prices, setPrices] = useState([]);
   const [cities, setCities] = useState([]);
@@ -1221,6 +1317,8 @@ function PricingPanel({ vehicleID }) {
 
   return (
     <div className="space-y-3">
+      <DealerCommissionCard vehicleID={vehicleID} />
+
       <div className="flex items-center justify-between gap-3">
         <div className="text-xs text-slate-500">
           {prices.length} cit{prices.length === 1 ? 'y' : 'ies'} priced
