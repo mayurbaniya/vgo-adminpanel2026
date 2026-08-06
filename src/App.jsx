@@ -24,6 +24,7 @@ import HomeBannersManager from './pages/home-banners/HomeBannersManager.jsx';
 import OffersManager from './pages/offers/OffersManager.jsx';
 import FeatureFlags from './pages/settings/FeatureFlags.jsx';
 import ContactInfo from './pages/settings/ContactInfo.jsx';
+import Sessions from './pages/settings/Sessions.jsx';
 import StaffManager from './pages/staff/StaffManager.jsx';
 import DealershipsManager from './pages/dealerships/DealershipsManager.jsx';
 import ServerHealth from './pages/system/ServerHealth.jsx';
@@ -72,6 +73,7 @@ export default function App() {
         <Route path="/feature-flags" element={<SuperOnly><FeatureFlags /></SuperOnly>} />
         <Route path="/contact-info" element={<SuperOnly><ContactInfo /></SuperOnly>} />
         <Route path="/server-health" element={<SuperOnly><ServerHealth /></SuperOnly>} />
+        <Route path="/sessions" element={<SuperOnly><Sessions /></SuperOnly>} />
       </Route>
 
       <Route path="*" element={<Navigate to="/dashboard" replace />} />

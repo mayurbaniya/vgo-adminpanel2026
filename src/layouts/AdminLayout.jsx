@@ -15,6 +15,7 @@ import {
   Megaphone,
   Menu,
   MessageSquare,
+  MonitorSmartphone,
   PhoneCall,
   Settings2,
   ShieldCheck,
@@ -88,6 +89,7 @@ const NAV_GROUPS = [
       { to: '/feature-flags', label: 'Feature Flags', icon: Settings2 },
       { to: '/contact-info', label: 'Contact Us', icon: PhoneCall },
       { to: '/server-health', label: 'Server Health', icon: Activity },
+      { to: '/sessions', label: 'Sessions', icon: MonitorSmartphone },
     ],
   },
 ];

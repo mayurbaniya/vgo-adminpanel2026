@@ -23,11 +23,16 @@ export const AuthService = {
     client.post('/user/auth/refresh-token/web', {}, { withCredentials: true }),
   logout: () =>
     client.post('/user/auth/logout/web', {}, { withCredentials: true }),
-  createAdmin: (data) => client.post('/user/auth/create-admin', data),
-  verifyAdmin: ({ clientID, adminOTP, devOTP }) =>
-    client.post('/user/auth/verify-admin', null, {
-      params: { clientID, adminOTP, devOTP },
-    }),
+};
+
+// -----------------------------------------------------------------------------
+// /admin/sessions  →  AdminSessionController
+// The current session is identified server-side via the httpOnly refresh
+// cookie — no token ever crosses into JS. List rows carry metadata only.
+// -----------------------------------------------------------------------------
+export const Sessions = {
+  list: () => client.get('/admin/sessions'),
+  logoutOthers: () => client.post('/admin/sessions/logout-others'),
 };
 
 // -----------------------------------------------------------------------------
