@@ -42,6 +42,14 @@ export const Dashboard = {
 };
 
 // -----------------------------------------------------------------------------
+// /admin/system/  →  SystemHealthController
+// -----------------------------------------------------------------------------
+export const SystemHealth = {
+  // JVM heap, CPU, disk, DB ping + Hikari pool stats, uptime.
+  health: () => client.get('/admin/system/health'),
+};
+
+// -----------------------------------------------------------------------------
 // /admin/vehicle/  →  VehicleController
 // -----------------------------------------------------------------------------
 export const Vehicles = {
@@ -114,6 +122,15 @@ export const Vehicles = {
   addVideo: (data) => client.put('/admin/vehicle/video', data),
   getVideos: (vehicleID) =>
     client.get('/admin/vehicle/videos', { params: { vehicleID } }),
+  // Paged listing across ALL vehicles for the Videos tab.
+  // params: { page, size, sortBy, sortDir, q, status: 'active'|'hidden' }
+  getAllVideos: (params) => client.get('/admin/vehicle/videos/all', { params }),
+  updateVideo: (vLinkId, data) =>
+    client.put(`/admin/vehicle/video/${vLinkId}`, data),
+  setVideoVisibility: (vLinkId, visible) =>
+    client.put(`/admin/vehicle/video/${vLinkId}/status`, null, {
+      params: { visible },
+    }),
   deleteVideo: (vLinkId) =>
     client.delete('/admin/vehicle/video', { params: { vLinkId } }),
   // color variants — soft-migration friendly: list returns EMPTY (data=[])

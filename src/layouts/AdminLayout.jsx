@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
+  Activity,
   BadgePercent,
   Bike,
   Building2,
@@ -21,6 +22,7 @@ import {
   Star,
   Tags,
   Users,
+  Video,
   Wallet,
   X,
 } from 'lucide-react';
@@ -42,6 +44,7 @@ const NAV_GROUPS = [
       { to: '/vehicles', label: 'Vehicles', icon: Bike },
       { to: '/used-vehicles', label: 'Used Vehicles', icon: Bike },
       { to: '/featured-vehicles', label: 'Featured', icon: Sparkles },
+      { to: '/videos', label: 'Videos', icon: Video },
       { to: '/brands', label: 'Brands', icon: Tags },
       { to: '/cities', label: 'Cities', icon: Building2 },
     ],
@@ -84,6 +87,7 @@ const NAV_GROUPS = [
     items: [
       { to: '/feature-flags', label: 'Feature Flags', icon: Settings2 },
       { to: '/contact-info', label: 'Contact Us', icon: PhoneCall },
+      { to: '/server-health', label: 'Server Health', icon: Activity },
     ],
   },
 ];

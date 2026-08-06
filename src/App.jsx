@@ -8,6 +8,7 @@ import Dashboard from './pages/Dashboard.jsx';
 import VehiclesList from './pages/vehicles/VehiclesList.jsx';
 import UsedVehiclesList from './pages/vehicles/UsedVehiclesList.jsx';
 import FeaturedVehiclesList from './pages/featured/FeaturedVehiclesList.jsx';
+import VideosManager from './pages/videos/VideosManager.jsx';
 import BrandsManager from './pages/brands/BrandsManager.jsx';
 import CitiesManager from './pages/cities/CitiesManager.jsx';
 import LeadsList from './pages/leads/LeadsList.jsx';
@@ -25,6 +26,7 @@ import FeatureFlags from './pages/settings/FeatureFlags.jsx';
 import ContactInfo from './pages/settings/ContactInfo.jsx';
 import StaffManager from './pages/staff/StaffManager.jsx';
 import DealershipsManager from './pages/dealerships/DealershipsManager.jsx';
+import ServerHealth from './pages/system/ServerHealth.jsx';
 
 // Scoped staff (CITY_MANAGER / SALES_EXEC) only get the leads/sales
 // workspace — every other page is super-admin only and bounces them to
@@ -51,6 +53,7 @@ export default function App() {
         <Route path="/vehicles" element={<SuperOnly><VehiclesList /></SuperOnly>} />
         <Route path="/used-vehicles" element={<SuperOnly><UsedVehiclesList /></SuperOnly>} />
         <Route path="/featured-vehicles" element={<SuperOnly><FeaturedVehiclesList /></SuperOnly>} />
+        <Route path="/videos" element={<SuperOnly><VideosManager /></SuperOnly>} />
         <Route path="/brands" element={<SuperOnly><BrandsManager /></SuperOnly>} />
         <Route path="/cities" element={<SuperOnly><CitiesManager /></SuperOnly>} />
         <Route path="/leads" element={<LeadsList />} />
@@ -68,6 +71,7 @@ export default function App() {
         <Route path="/offers" element={<SuperOnly><OffersManager /></SuperOnly>} />
         <Route path="/feature-flags" element={<SuperOnly><FeatureFlags /></SuperOnly>} />
         <Route path="/contact-info" element={<SuperOnly><ContactInfo /></SuperOnly>} />
+        <Route path="/server-health" element={<SuperOnly><ServerHealth /></SuperOnly>} />
       </Route>
 
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
