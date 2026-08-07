@@ -1116,9 +1116,9 @@ function ImagesPanel({ vehicleID, images, onImagesChanged, onError, error }) {
 // Backend constraints worth knowing about while reading this:
 //   - addOnRoadPrice rejects duplicate (vehicle, city) pairs (ALREADY_EXIST),
 //     so we filter the city dropdown to those that don't have a price yet.
-//   - updateOnRoadPrice only updates the onRoadPrice field. Insurance / RTO /
-//     ex-showroom can't be edited after creation through this endpoint, so
-//     the row only exposes inline edit on onRoadPrice.
+//   - updateOnRoadPrice takes each price component as an optional param; the
+//     ones we send are written, the ones we omit are left alone. We send all
+//     four, so the row edits on-road / ex-showroom / insurance / RTO together.
 // -----------------------------------------------------------------------------
 // Platform's per-unit dealer commission for this model (what the showroom
 // pays us on each sale, typically ₹3-7k). Admin-eyes-only: the backend keeps
@@ -1216,13 +1216,39 @@ function DealerCommissionCard({ vehicleID }) {
   );
 }
 
+const EMPTY_PRICE_DRAFT = {
+  onRoadPrice: '',
+  exShowRoomPrice: '',
+  insurance: '',
+  rto: '',
+};
+
+// One price component in the table: read-only text, or an input while the row
+// is in edit mode.
+function PriceCell({ editing, value, display, onChange, autoFocus, className }) {
+  return (
+    <td className="px-3 py-2.5">
+      {editing ? (
+        <input
+          autoFocus={autoFocus}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="w-full rounded-md border border-slate-300 px-2 py-1 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500/30"
+        />
+      ) : (
+        <span className={className || 'text-slate-500'}>{display || '—'}</span>
+      )}
+    </td>
+  );
+}
+
 function PricingPanel({ vehicleID }) {
   const [prices, setPrices] = useState([]);
   const [cities, setCities] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [editingId, setEditingId] = useState(null);
-  const [editValue, setEditValue] = useState('');
+  const [editDraft, setEditDraft] = useState(EMPTY_PRICE_DRAFT);
   const [savingId, setSavingId] = useState(null);
   const [addOpen, setAddOpen] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
@@ -1265,22 +1291,44 @@ function PricingPanel({ vehicleID }) {
 
   function startEdit(price) {
     setEditingId(price.id);
-    setEditValue(price.onRoadPrice ?? '');
+    setEditDraft({
+      onRoadPrice: price.onRoadPrice ?? '',
+      exShowRoomPrice: price.exShowRoomPrice ?? '',
+      insurance: price.insurance ?? '',
+      rto: price.rto ?? '',
+    });
     setError('');
   }
   function cancelEdit() {
     setEditingId(null);
-    setEditValue('');
+    setEditDraft(EMPTY_PRICE_DRAFT);
+  }
+  function setDraftField(field, value) {
+    setEditDraft((d) => ({ ...d, [field]: value }));
   }
   async function saveEdit(price) {
-    if (!editValue.trim()) {
+    const trimmed = {
+      onRoadPrice: editDraft.onRoadPrice.trim(),
+      exShowRoomPrice: editDraft.exShowRoomPrice.trim(),
+      insurance: editDraft.insurance.trim(),
+      rto: editDraft.rto.trim(),
+    };
+    if (!trimmed.onRoadPrice) {
       setError('On-road price cannot be empty.');
       return;
     }
     setSavingId(price.id);
     setError('');
     try {
-      const resp = await VehiclesApi.updateOnRoadPrice(price.id, editValue.trim());
+      // The endpoint names the on-road field `newOnRoadPrice`; the other three
+      // go by their entity names. Blank values are sent as-is so an admin can
+      // clear a component (e.g. a bike with no RTO figure yet).
+      const resp = await VehiclesApi.updateOnRoadPrice(price.id, {
+        newOnRoadPrice: trimmed.onRoadPrice,
+        exShowRoomPrice: trimmed.exShowRoomPrice,
+        insurance: trimmed.insurance,
+        rto: trimmed.rto,
+      });
       if (resp?.data?.status !== 'SUCCESS') {
         throw new Error(resp?.data?.msg || 'Failed to update price.');
       }
@@ -1288,7 +1336,14 @@ function PricingPanel({ vehicleID }) {
       setPrices((prev) =>
         prev.map((p) =>
           p.id === price.id
-            ? { ...p, onRoadPrice: updated?.onRoadPrice ?? editValue.trim() }
+            ? {
+                ...p,
+                onRoadPrice: updated?.onRoadPrice ?? trimmed.onRoadPrice,
+                exShowRoomPrice:
+                  updated?.exShowRoomPrice ?? trimmed.exShowRoomPrice,
+                insurance: updated?.insurance ?? trimmed.insurance,
+                rto: updated?.rto ?? trimmed.rto,
+              }
             : p,
         ),
       );
@@ -1398,29 +1453,32 @@ function PricingPanel({ vehicleID }) {
                   <td className="px-3 py-2.5 font-medium text-slate-700">
                     {p.city?.name || '—'}
                   </td>
-                  <td className="px-3 py-2.5">
-                    {editingId === p.id ? (
-                      <input
-                        autoFocus
-                        value={editValue}
-                        onChange={(e) => setEditValue(e.target.value)}
-                        className="w-full rounded-md border border-slate-300 px-2 py-1 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500/30"
-                      />
-                    ) : (
-                      <span className="text-slate-700">
-                        {p.onRoadPrice || '—'}
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-3 py-2.5 text-slate-500">
-                    {p.exShowRoomPrice || '—'}
-                  </td>
-                  <td className="px-3 py-2.5 text-slate-500">
-                    {p.insurance || '—'}
-                  </td>
-                  <td className="px-3 py-2.5 text-slate-500">
-                    {p.rto || '—'}
-                  </td>
+                  <PriceCell
+                    editing={editingId === p.id}
+                    autoFocus
+                    value={editDraft.onRoadPrice}
+                    display={p.onRoadPrice}
+                    onChange={(v) => setDraftField('onRoadPrice', v)}
+                    className="text-slate-700"
+                  />
+                  <PriceCell
+                    editing={editingId === p.id}
+                    value={editDraft.exShowRoomPrice}
+                    display={p.exShowRoomPrice}
+                    onChange={(v) => setDraftField('exShowRoomPrice', v)}
+                  />
+                  <PriceCell
+                    editing={editingId === p.id}
+                    value={editDraft.insurance}
+                    display={p.insurance}
+                    onChange={(v) => setDraftField('insurance', v)}
+                  />
+                  <PriceCell
+                    editing={editingId === p.id}
+                    value={editDraft.rto}
+                    display={p.rto}
+                    onChange={(v) => setDraftField('rto', v)}
+                  />
                   <td className="px-3 py-2.5">
                     <div className="flex items-center justify-end gap-1.5">
                       {editingId === p.id ? (
@@ -1451,7 +1509,7 @@ function PricingPanel({ vehicleID }) {
                           variant="secondary"
                           onClick={() => startEdit(p)}
                           disabled={editingId !== null}
-                          title="Edit on-road price (insurance/RTO/ex-showroom can't be edited via this endpoint)"
+                          title="Edit on-road, ex-showroom, insurance and RTO for this city"
                         >
                           <Pencil className="h-3.5 w-3.5" />
                           Edit

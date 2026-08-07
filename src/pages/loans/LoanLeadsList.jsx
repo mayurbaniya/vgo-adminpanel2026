@@ -228,6 +228,7 @@ export default function LoanLeadsList() {
                 <th className="px-4 py-3">Applicant</th>
                 <th className="px-4 py-3">Vehicle</th>
                 <th className="px-4 py-3">Income / mo</th>
+                <th className="px-4 py-3">Down payment</th>
                 <th className="px-4 py-3">Est. eligible</th>
                 <th className="px-4 py-3">Source</th>
                 <th className="px-4 py-3">Created</th>
@@ -238,7 +239,7 @@ export default function LoanLeadsList() {
               {loading ? (
                 Array.from({ length: 6 }).map((_, i) => (
                   <tr key={i}>
-                    {[0, 1, 2, 3, 4, 5, 6].map((c) => (
+                    {[0, 1, 2, 3, 4, 5, 6, 7].map((c) => (
                       <td key={c} className="px-4 py-3.5">
                         <Skeleton className="h-3 w-3/4" />
                       </td>
@@ -247,7 +248,7 @@ export default function LoanLeadsList() {
                 ))
               ) : items.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-12">
+                  <td colSpan={8} className="px-4 py-12">
                     <EmptyState
                       icon={Wallet}
                       title="No loan leads"
@@ -273,6 +274,9 @@ export default function LoanLeadsList() {
                     </td>
                     <td className="px-4 py-3.5 text-slate-600">
                       {money(loan.monthlyIncome)}
+                    </td>
+                    <td className="px-4 py-3.5 text-slate-600">
+                      {money(loan.downPayment)}
                     </td>
                     <td className="px-4 py-3.5 text-slate-600">
                       {money(loan.estimatedEligibleAmount)}

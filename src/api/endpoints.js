@@ -119,9 +119,11 @@ export const Vehicles = {
     client.get('/admin/vehicle/on-road-prices', { params: { vehicleID } }),
   addOnRoadPrice: (data) =>
     client.post('/admin/vehicle/add-on-road-price', null, { params: data }),
-  updateOnRoadPrice: (vehiclePriceID, newOnRoadPrice) =>
+  // fields: { newOnRoadPrice, exShowRoomPrice, insurance, rto } — all optional,
+  // omitted keys are left untouched server-side.
+  updateOnRoadPrice: (vehiclePriceID, fields) =>
     client.put('/admin/vehicle/update-on-road-price', null, {
-      params: { vehiclePriceID, newOnRoadPrice },
+      params: { vehiclePriceID, ...fields },
     }),
   // videos
   addVideo: (data) => client.put('/admin/vehicle/video', data),

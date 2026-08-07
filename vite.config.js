@@ -19,7 +19,11 @@ export default defineConfig(({ mode }) => {
       },
     },
     server: {
-      port: 5174,
+      // Must be a port the backend's CORS allowlist knows (cors.allowed-origins
+      // in application-*.properties — currently 5173/4173/3000). strictPort so a
+      // busy port fails loudly instead of silently hopping to a CORS-blocked one.
+      port: 5173,
+      strictPort: true,
       open: true,
       proxy: proxyTarget
         ? {
