@@ -114,6 +114,12 @@ export const Vehicles = {
     client.put('/admin/vehicle/commission', null, {
       params: { vehicleID, amount },
     }),
+  // price staleness — "Price Review" tab. A vehicle's price is hand-entered
+  // (no external pricing API), so nothing else flags when it's gone unchecked.
+  getStalePrices: (params) => client.get('/admin/vehicle/stale-prices', { params }),
+  getStalePriceCount: () => client.get('/admin/vehicle/stale-prices/count'),
+  markPriceVerified: (vehicleID) =>
+    client.put('/admin/vehicle/mark-price-verified', null, { params: { vehicleID } }),
   // on-road price
   getOnRoadPrices: (vehicleID) =>
     client.get('/admin/vehicle/on-road-prices', { params: { vehicleID } }),
@@ -320,6 +326,12 @@ export const Finance = {
   getAll: (params) => client.get('/admin/finance/', { params }),
   add: (financeName) =>
     client.post('/admin/finance/add', null, { params: { finance: financeName } }),
+  update: (financeID, financeName) =>
+    client.put('/admin/finance/update', null, {
+      params: { financeID, finance: financeName },
+    }),
+  delete: (financeID) =>
+    client.delete('/admin/finance/delete', { params: { financeID } }),
   enable: (financeID) =>
     client.put('/admin/finance/enable', null, { params: { financeID } }),
   disable: (financeID) =>

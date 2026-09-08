@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
   Activity,
+  AlertTriangle,
   BadgePercent,
   Bike,
   Building2,
@@ -28,6 +29,7 @@ import {
   X,
 } from 'lucide-react';
 import { useAuth } from '@/auth/AuthContext.jsx';
+import { Vehicles as VehiclesApi } from '@/api/endpoints.js';
 import { cn } from '@/lib/cn';
 
 // Single source of truth for nav. Editing here updates sidebar + topbar
@@ -43,6 +45,7 @@ const NAV_GROUPS = [
     label: 'Catalog',
     items: [
       { to: '/vehicles', label: 'Vehicles', icon: Bike },
+      { to: '/price-review', label: 'Price Review', icon: AlertTriangle, badge: 'stalePrices' },
       { to: '/used-vehicles', label: 'Used Vehicles', icon: Bike },
       { to: '/featured-vehicles', label: 'Featured', icon: Sparkles },
       { to: '/videos', label: 'Videos', icon: Video },
@@ -147,6 +150,34 @@ function SidebarContent({ onNavigate }) {
       : group.items.filter((item) => item.staffAccess),
   })).filter((group) => group.items.length > 0);
 
+  // Badge counts, keyed to match each nav item's `badge` field. Refetched
+  // every 5 minutes — this only ever changes via a Sunday scheduled job or
+  // an admin action on the Price Review page itself, so anything faster
+  // would just be wasted polling.
+  const [badgeCounts, setBadgeCounts] = useState({});
+  useEffect(() => {
+    if (!isSuperAdmin) return;
+    let cancelled = false;
+    function refresh() {
+      VehiclesApi.getStalePriceCount()
+        .then((resp) => {
+          if (cancelled) return;
+          if (resp?.data?.status === 'SUCCESS') {
+            setBadgeCounts((prev) => ({ ...prev, stalePrices: resp.data.data }));
+          }
+        })
+        .catch(() => {
+          // badge is non-critical chrome — silent
+        });
+    }
+    refresh();
+    const interval = setInterval(refresh, 5 * 60 * 1000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [isSuperAdmin]);
+
   return (
     <>
       <div className="flex h-16 items-center gap-2 border-b border-slate-100 px-5">
@@ -193,6 +224,13 @@ function SidebarContent({ onNavigate }) {
                           )}
                         />
                         <span className="flex-1 truncate">{item.label}</span>
+                        {item.badge && badgeCounts[item.badge] > 0 && (
+                          <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-amber-100 px-1.5 text-[10px] font-bold text-amber-700">
+                            {badgeCounts[item.badge] > 99
+                              ? '99+'
+                              : badgeCounts[item.badge]}
+                          </span>
+                        )}
                         {isActive && (
                           <ChevronRight className="h-3.5 w-3.5 text-brand-500" />
                         )}

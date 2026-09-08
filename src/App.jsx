@@ -6,6 +6,7 @@ import { useAuth } from './auth/AuthContext.jsx';
 import Login from './pages/Login.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import VehiclesList from './pages/vehicles/VehiclesList.jsx';
+import PriceReview from './pages/vehicles/PriceReview.jsx';
 import UsedVehiclesList from './pages/vehicles/UsedVehiclesList.jsx';
 import FeaturedVehiclesList from './pages/featured/FeaturedVehiclesList.jsx';
 import VideosManager from './pages/videos/VideosManager.jsx';
@@ -52,6 +53,7 @@ export default function App() {
         <Route index element={<Navigate to="/dashboard" replace />} />
         <Route path="/dashboard" element={<SuperOnly><Dashboard /></SuperOnly>} />
         <Route path="/vehicles" element={<SuperOnly><VehiclesList /></SuperOnly>} />
+        <Route path="/price-review" element={<SuperOnly><PriceReview /></SuperOnly>} />
         <Route path="/used-vehicles" element={<SuperOnly><UsedVehiclesList /></SuperOnly>} />
         <Route path="/featured-vehicles" element={<SuperOnly><FeaturedVehiclesList /></SuperOnly>} />
         <Route path="/videos" element={<SuperOnly><VideosManager /></SuperOnly>} />

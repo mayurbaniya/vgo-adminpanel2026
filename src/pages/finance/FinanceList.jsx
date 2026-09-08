@@ -4,8 +4,10 @@ import {
   ChevronRight,
   Image as ImageIcon,
   Landmark,
+  Pencil,
   Plus,
   Search,
+  Trash2,
   Upload,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button.jsx';
@@ -68,6 +70,7 @@ export default function FinanceList() {
   const [addOpen, setAddOpen] = useState(false);
   const [mutatingId, setMutatingId] = useState(null);
   const [logoItem, setLogoItem] = useState(null);
+  const [editItem, setEditItem] = useState(null);
   const [reloadKey, setReloadKey] = useState(0);
 
   // Reset to page 0 whenever the debounced search query changes.
@@ -183,6 +186,30 @@ export default function FinanceList() {
         err?.response?.data?.msg ||
           err?.message ||
           'Failed to update financier.',
+      );
+    } finally {
+      setMutatingId(null);
+    }
+  }
+
+  async function handleDelete(item) {
+    const ok = window.confirm(
+      `Soft-delete financier "${item.name}"? It will be hidden from this list.`,
+    );
+    if (!ok) return;
+    setMutatingId(item.id);
+    setError('');
+    try {
+      const resp = await FinanceApi.delete(item.id);
+      if (resp?.data?.status !== 'SUCCESS') {
+        throw new Error(resp?.data?.msg || 'Failed to delete financier.');
+      }
+      reloadAll();
+    } catch (err) {
+      setError(
+        err?.response?.data?.msg ||
+          err?.message ||
+          'Failed to delete financier.',
       );
     } finally {
       setMutatingId(null);
@@ -343,6 +370,15 @@ export default function FinanceList() {
                           size="sm"
                           variant="ghost"
                           disabled={mutatingId !== null}
+                          onClick={() => setEditItem(item)}
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                          Edit
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={mutatingId !== null}
                           onClick={() => setLogoItem(item)}
                         >
                           <Upload className="h-3.5 w-3.5" />
@@ -358,6 +394,15 @@ export default function FinanceList() {
                           onClick={() => handleToggle(item)}
                         >
                           {item.status === STATUS_ACTIVE ? 'Disable' : 'Enable'}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={mutatingId !== null}
+                          onClick={() => handleDelete(item)}
+                          className="text-red-600 hover:bg-red-50 hover:text-red-700"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
                         </Button>
                       </div>
                     </td>
@@ -411,6 +456,28 @@ export default function FinanceList() {
         onAdded={() => {
           setAddOpen(false);
           reloadAll();
+        }}
+      />
+
+      <EditFinanceModal
+        item={editItem}
+        onClose={() => setEditItem(null)}
+        existingNames={items
+          .filter((it) => it.id !== editItem?.id)
+          .map((it) => it.name.toLowerCase())}
+        onSaved={(updated) => {
+          setItems((prev) =>
+            prev.map((it) =>
+              it.id === updated.id
+                ? {
+                    ...it,
+                    name: updated.name,
+                    modified: updated.modified ?? it.modified,
+                  }
+                : it,
+            ),
+          );
+          setEditItem(null);
         }}
       />
 
@@ -602,6 +669,111 @@ function AddFinanceModal({ open, onClose, existingNames, onAdded }) {
         <p className="text-[11px] text-slate-500">
           The logo can be uploaded after the financier is created.
         </p>
+        {(localError || serverError) && (
+          <div className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
+            {serverError || localError}
+          </div>
+        )}
+      </form>
+    </Modal>
+  );
+}
+
+function EditFinanceModal({ item, onClose, existingNames, onSaved }) {
+  const [name, setName] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [serverError, setServerError] = useState('');
+
+  const open = item !== null;
+
+  useEffect(() => {
+    if (open) {
+      setName(item.name);
+      setServerError('');
+      setSubmitting(false);
+    }
+  }, [open, item?.id]);
+
+  const trimmed = name.trim();
+  const localError = (() => {
+    if (!trimmed) return '';
+    if (trimmed.length > MAX_NAME_LENGTH)
+      return `Name must be ${MAX_NAME_LENGTH} characters or fewer.`;
+    if (
+      trimmed.toLowerCase() !== item?.name.toLowerCase() &&
+      existingNames.includes(trimmed.toLowerCase())
+    )
+      return 'A financier with this name already exists.';
+    return '';
+  })();
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (!trimmed || localError || !item) return;
+    setSubmitting(true);
+    setServerError('');
+    try {
+      const resp = await FinanceApi.update(item.id, trimmed);
+      if (resp?.data?.status !== 'SUCCESS') {
+        throw new Error(resp?.data?.msg || 'Failed to update financier.');
+      }
+      const updated = resp.data.data;
+      onSaved({
+        id: item.id,
+        name: updated?.name ?? trimmed,
+        modified: updated?.modified,
+      });
+    } catch (err) {
+      setServerError(
+        err?.response?.data?.msg ||
+          err?.message ||
+          'Failed to update financier.',
+      );
+      setSubmitting(false);
+    }
+  }
+
+  if (!open) return null;
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      dismissible={!submitting}
+      title="Edit financier"
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose} disabled={submitting}>
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            form="edit-finance-form"
+            loading={submitting}
+            disabled={submitting || !trimmed || Boolean(localError)}
+          >
+            Save changes
+          </Button>
+        </>
+      }
+    >
+      <form id="edit-finance-form" onSubmit={handleSubmit} className="space-y-3">
+        <div>
+          <Label htmlFor="edit-finance-name">Financier name</Label>
+          <Input
+            id="edit-finance-name"
+            autoFocus
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            maxLength={MAX_NAME_LENGTH}
+          />
+          <div className="mt-1 flex items-center justify-between text-[11px] text-slate-400">
+            <span>Up to {MAX_NAME_LENGTH} characters.</span>
+            <span>
+              {trimmed.length}/{MAX_NAME_LENGTH}
+            </span>
+          </div>
+        </div>
         {(localError || serverError) && (
           <div className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
             {serverError || localError}
