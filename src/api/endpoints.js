@@ -259,6 +259,19 @@ export const Leads = {
 };
 
 // -----------------------------------------------------------------------------
+// /admin/interest-abandonment/  →  InterestAbandonmentControllerAdmin
+// Users who opened "I'm Interested" without confirming — feeds the
+// email/push nudge sweep server-side; markWhatsappSent is a manual,
+// self-reported marker (no WhatsApp Business API integration — see the
+// InterestAbandonmentList.jsx page for the wa.me link it pairs with).
+// -----------------------------------------------------------------------------
+export const InterestAbandonment = {
+  getAll: (params) => client.get('/admin/interest-abandonment/all', { params }),
+  markWhatsappSent: (id) =>
+    client.put(`/admin/interest-abandonment/${id}/whatsapp-sent`),
+};
+
+// -----------------------------------------------------------------------------
 // /admin/staff/  →  StaffControllerAdmin  (super-admin only)
 // -----------------------------------------------------------------------------
 export const Staff = {
@@ -484,6 +497,27 @@ export const FeatureFlags = {
     client.put('/admin/app-config/feature-flags/disable', null, {
       params: { key, adminID },
     }),
+};
+
+// -----------------------------------------------------------------------------
+// /admin/roles/  →  RoleController
+// Named roles + their view/edit/delete permission matrix per AdminModule.
+// -----------------------------------------------------------------------------
+export const Roles = {
+  getAll: () => client.get('/admin/roles/all'),
+  getById: (id) => client.get(`/admin/roles/${id}`),
+  create: (data) => client.post('/admin/roles/create', data),
+  update: (id, data) => client.put(`/admin/roles/${id}`, data),
+  delete: (id) => client.delete(`/admin/roles/${id}`),
+};
+
+// -----------------------------------------------------------------------------
+// /admin/audit/  →  AuditLogController
+// "Who did what" — recent successful EDIT/DELETE actions across the panel.
+// -----------------------------------------------------------------------------
+export const AuditLog = {
+  recent: (params) => client.get('/admin/audit/recent', { params }),
+  search: (params) => client.get('/admin/audit/search', { params }),
 };
 
 // -----------------------------------------------------------------------------

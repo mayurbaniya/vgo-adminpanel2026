@@ -32,67 +32,70 @@ import { useAuth } from '@/auth/AuthContext.jsx';
 import { Vehicles as VehiclesApi } from '@/api/endpoints.js';
 import { cn } from '@/lib/cn';
 
-// Single source of truth for nav. Editing here updates sidebar + topbar
-// breadcrumb + (eventually) command-K search. Items marked `staffAccess`
-// are visible to scoped staff (CITY_MANAGER / SALES_EXEC) — everything else
-// is super-admin only, mirroring the backend SecurityConfig split.
+// Single source of truth for nav. `module` is the AdminModule this item is
+// gated on (mirrors the backend enum exactly — see niku_repo's AdminModule);
+// an item shows only when the signed-in account can view that module
+// (AuthContext.can, resolved from the login response's permission map, with
+// ADMIN/bypass-all short-circuiting to "see everything").
 const NAV_GROUPS = [
   {
     label: 'Overview',
-    items: [{ to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard }],
+    items: [{ to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, module: 'DASHBOARD' }],
   },
   {
     label: 'Catalog',
     items: [
-      { to: '/vehicles', label: 'Vehicles', icon: Bike },
-      { to: '/price-review', label: 'Price Review', icon: AlertTriangle, badge: 'stalePrices' },
-      { to: '/used-vehicles', label: 'Used Vehicles', icon: Bike },
-      { to: '/featured-vehicles', label: 'Featured', icon: Sparkles },
-      { to: '/videos', label: 'Videos', icon: Video },
-      { to: '/brands', label: 'Brands', icon: Tags },
-      { to: '/cities', label: 'Cities', icon: Building2 },
+      { to: '/vehicles', label: 'Vehicles', icon: Bike, module: 'VEHICLES' },
+      { to: '/price-review', label: 'Price Review', icon: AlertTriangle, badge: 'stalePrices', module: 'PRICE_REVIEW' },
+      { to: '/used-vehicles', label: 'Used Vehicles', icon: Bike, module: 'USED_VEHICLES' },
+      { to: '/featured-vehicles', label: 'Featured', icon: Sparkles, module: 'FEATURED_VEHICLES' },
+      { to: '/videos', label: 'Videos', icon: Video, module: 'VIDEOS' },
+      { to: '/brands', label: 'Brands', icon: Tags, module: 'BRANDS' },
+      { to: '/cities', label: 'Cities', icon: Building2, module: 'CITIES' },
     ],
   },
   {
     label: 'Leads & Sales',
     items: [
-      { to: '/leads', label: 'Leads', icon: ClipboardList, staffAccess: true },
-      { to: '/external-leads', label: 'External Leads', icon: ClipboardList },
-      { to: '/sales', label: 'Sales', icon: ChartLine, staffAccess: true },
-      { to: '/loan-leads', label: 'Loan Leads', icon: Wallet },
-      { to: '/finance', label: 'Finance', icon: HandCoins },
+      { to: '/leads', label: 'Leads', icon: ClipboardList, module: 'LEADS' },
+      { to: '/external-leads', label: 'External Leads', icon: ClipboardList, module: 'EXTERNAL_LEADS' },
+      { to: '/sales', label: 'Sales', icon: ChartLine, module: 'SALES' },
+      { to: '/loan-leads', label: 'Loan Leads', icon: Wallet, module: 'LOANS' },
+      { to: '/interest-nudges', label: 'Interest Nudges', icon: MessageSquare, module: 'INTEREST_NUDGES' },
+      { to: '/finance', label: 'Finance', icon: HandCoins, module: 'FINANCE' },
     ],
   },
   {
     label: 'Network',
     items: [
-      { to: '/dealerships', label: 'Dealerships', icon: Building2, staffAccess: true },
-      { to: '/staff', label: 'Staff', icon: ShieldCheck },
+      { to: '/dealerships', label: 'Dealerships', icon: Building2, module: 'DEALERSHIPS' },
+      { to: '/staff', label: 'Staff', icon: ShieldCheck, module: 'STAFF' },
+      { to: '/roles', label: 'Roles & Permissions', icon: ShieldCheck, module: 'ROLES' },
     ],
   },
   {
     label: 'People',
     items: [
-      { to: '/users', label: 'Users', icon: Users },
-      { to: '/partners', label: 'Partners', icon: Users },
-      { to: '/reviews', label: 'Reviews', icon: Star },
+      { to: '/users', label: 'Users', icon: Users, module: 'USERS' },
+      { to: '/partners', label: 'Partners', icon: Users, module: 'PARTNERS' },
+      { to: '/reviews', label: 'Reviews', icon: Star, module: 'REVIEWS' },
     ],
   },
   {
     label: 'Comms',
     items: [
-      { to: '/home-banners', label: 'Home Banners', icon: ImageIcon },
-      { to: '/offers', label: 'Offers', icon: BadgePercent },
-      { to: '/notifications', label: 'Notifications', icon: Megaphone },
+      { to: '/home-banners', label: 'Home Banners', icon: ImageIcon, module: 'HOME_BANNERS' },
+      { to: '/offers', label: 'Offers', icon: BadgePercent, module: 'OFFERS' },
+      { to: '/notifications', label: 'Notifications', icon: Megaphone, module: 'NOTIFICATIONS' },
     ],
   },
   {
     label: 'Settings',
     items: [
-      { to: '/feature-flags', label: 'Feature Flags', icon: Settings2 },
-      { to: '/contact-info', label: 'Contact Us', icon: PhoneCall },
-      { to: '/server-health', label: 'Server Health', icon: Activity },
-      { to: '/sessions', label: 'Sessions', icon: MonitorSmartphone },
+      { to: '/feature-flags', label: 'Feature Flags', icon: Settings2, module: 'FEATURE_FLAGS' },
+      { to: '/contact-info', label: 'Contact Us', icon: PhoneCall, module: 'CONTACT_INFO' },
+      { to: '/server-health', label: 'Server Health', icon: Activity, module: 'SERVER_HEALTH' },
+      { to: '/sessions', label: 'Sessions', icon: MonitorSmartphone, module: 'SESSIONS' },
     ],
   },
 ];
@@ -142,13 +145,13 @@ export default function AdminLayout() {
 }
 
 function SidebarContent({ onNavigate }) {
-  const { isSuperAdmin } = useAuth();
+  const { can } = useAuth();
   const groups = NAV_GROUPS.map((group) => ({
     ...group,
-    items: isSuperAdmin
-      ? group.items
-      : group.items.filter((item) => item.staffAccess),
+    items: group.items.filter((item) => can(item.module, 'view')),
   })).filter((group) => group.items.length > 0);
+
+  const canSeeStalePrices = can('PRICE_REVIEW', 'view');
 
   // Badge counts, keyed to match each nav item's `badge` field. Refetched
   // every 5 minutes — this only ever changes via a Sunday scheduled job or
@@ -156,7 +159,7 @@ function SidebarContent({ onNavigate }) {
   // would just be wasted polling.
   const [badgeCounts, setBadgeCounts] = useState({});
   useEffect(() => {
-    if (!isSuperAdmin) return;
+    if (!canSeeStalePrices) return;
     let cancelled = false;
     function refresh() {
       VehiclesApi.getStalePriceCount()
@@ -176,7 +179,7 @@ function SidebarContent({ onNavigate }) {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [isSuperAdmin]);
+  }, [canSeeStalePrices]);
 
   return (
     <>

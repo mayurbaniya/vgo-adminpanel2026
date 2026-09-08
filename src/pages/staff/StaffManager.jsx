@@ -11,6 +11,7 @@ import {
   Staff as StaffApi,
   Cities as CitiesApi,
   Dealerships as DealershipsApi,
+  Roles as RolesApi,
 } from '@/api/endpoints.js';
 import { cn } from '@/lib/cn';
 
@@ -251,6 +252,7 @@ function StaffEditorModal({ open, member, onClose, onSaved }) {
   const isEdit = Boolean(member);
   const [cities, setCities] = useState([]);
   const [dealerships, setDealerships] = useState([]);
+  const [roles, setRoles] = useState([]);
   const [form, setForm] = useState({
     name: '',
     email: '',
@@ -259,6 +261,7 @@ function StaffEditorModal({ open, member, onClose, onSaved }) {
     role: 'SALES_EXEC',
     cityID: '',
     dealershipID: '',
+    roleId: '',
   });
   const [submitting, setSubmitting] = useState(false);
   const [serverError, setServerError] = useState('');
@@ -273,6 +276,7 @@ function StaffEditorModal({ open, member, onClose, onSaved }) {
       role: member?.role || 'SALES_EXEC',
       cityID: member?.staffCity?.id ? String(member.staffCity.id) : '',
       dealershipID: member?.dealership?.id ? String(member.dealership.id) : '',
+      roleId: member?.accessRole?.id ? String(member.accessRole.id) : '',
     });
     setServerError('');
     setSubmitting(false);
@@ -287,6 +291,13 @@ function StaffEditorModal({ open, member, onClose, onSaved }) {
       .then((resp) => {
         if (resp?.data?.status === 'SUCCESS') {
           setDealerships((resp.data.data || []).filter((d) => d.status === 1));
+        }
+      })
+      .catch(() => {});
+    RolesApi.getAll()
+      .then((resp) => {
+        if (resp?.data?.status === 'SUCCESS') {
+          setRoles(resp.data.data || []);
         }
       })
       .catch(() => {});
@@ -311,6 +322,7 @@ function StaffEditorModal({ open, member, onClose, onSaved }) {
         role: form.role,
         cityID: form.role === 'CITY_MANAGER' ? Number(form.cityID) : null,
         dealershipID: form.role === 'SALES_EXEC' ? Number(form.dealershipID) : null,
+        roleId: form.roleId ? Number(form.roleId) : null,
       };
       const resp = isEdit
         ? await StaffApi.update(member.id, body)
@@ -444,6 +456,28 @@ function StaffEditorModal({ open, member, onClose, onSaved }) {
               </select>
             </div>
           )}
+        </div>
+
+        <div>
+          <Label htmlFor="staff-permission-role">
+            Permissions <span className="font-normal text-slate-400">(view/edit/delete per module)</span>
+          </Label>
+          <select
+            id="staff-permission-role"
+            value={form.roleId}
+            onChange={(e) => setForm((f) => ({ ...f, roleId: e.target.value }))}
+            className="block w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+          >
+            <option value="">Default for {ROLES.find((r) => r.value === form.role)?.label || form.role}</option>
+            {roles.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.name}
+              </option>
+            ))}
+          </select>
+          <p className="mt-1 text-xs text-slate-500">
+            Manage what each option grants under Roles &amp; Permissions.
+          </p>
         </div>
 
         {serverError && (

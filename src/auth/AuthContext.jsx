@@ -66,6 +66,13 @@ export function AuthProvider({ children }) {
       status: userData.status,
       city: userData.city,
       cityID: userData.cityID,
+      accessRoleName: userData.accessRoleName,
+      // { MODULE_NAME: { canView, canEdit, canDelete } }, resolved server-side
+      // from the account's Role. A bypass-all (super admin) role gets every
+      // module true here too, but `can()` below checks `isSuperAdmin` first
+      // regardless, so this stays correct even against a stale/legacy login
+      // response that didn't send permissions at all.
+      permissions: userData.permissions || {},
     };
 
     localStorage.setItem(ACCESS_KEY, accessToken);
@@ -91,6 +98,22 @@ export function AuthProvider({ children }) {
 
   const isSuperAdmin = roleList(user?.role).includes('ADMIN');
 
+  // Module permission check — 'view' | 'edit' | 'delete'. isSuperAdmin is
+  // still the fast-path bypass (mirrors the backend's Role.bypassAll) so a
+  // super admin never depends on the permissions map having every module
+  // populated correctly.
+  const can = useCallback(
+    (module, action = 'view') => {
+      if (isSuperAdmin) return true;
+      const flags = user?.permissions?.[module];
+      if (!flags) return false;
+      if (action === 'edit') return Boolean(flags.canEdit);
+      if (action === 'delete') return Boolean(flags.canDelete);
+      return Boolean(flags.canView);
+    },
+    [isSuperAdmin, user],
+  );
+
   const value = useMemo(
     () => ({
       isAuthenticated: Boolean(accessToken),
@@ -99,10 +122,11 @@ export function AuthProvider({ children }) {
       // Scoped staff (CITY_MANAGER / SALES_EXEC) only get the leads/sales
       // workspace; everything else in the panel is super-admin territory.
       isSuperAdmin,
+      can,
       login,
       logout,
     }),
-    [accessToken, user, isSuperAdmin, login, logout],
+    [accessToken, user, isSuperAdmin, can, login, logout],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

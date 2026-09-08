@@ -10,13 +10,15 @@ import {
   History,
   TrendingUp,
   Trophy,
+  UserCog,
   Wallet,
 } from 'lucide-react';
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card.jsx';
 import { EmptyState } from '@/components/ui/EmptyState.jsx';
 import { PageHeader } from '@/components/ui/PageHeader.jsx';
 import { Skeleton } from '@/components/ui/Skeleton.jsx';
-import { Dashboard as DashboardApi } from '@/api/endpoints.js';
+import { Dashboard as DashboardApi, AuditLog as AuditLogApi } from '@/api/endpoints.js';
+import { useAuth } from '@/auth/AuthContext.jsx';
 import { cn } from '@/lib/cn';
 
 const MONTH_NAMES = [
@@ -59,11 +61,43 @@ function pctDelta(curr, prev) {
 }
 
 export default function Dashboard() {
+  const { can } = useAuth();
   const [overview, setOverview] = useState(null);
   const [monthStats, setMonthStats] = useState(null);
   const [pipeline, setPipeline] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
+  // "Who did what" across the panel — every EDIT/DELETE behind a
+  // @RequiresPermission endpoint writes here (see PermissionAspect in
+  // niku_repo). Own fetch/gate so a slow or denied audit call never blocks
+  // the rest of the dashboard.
+  const canSeeAudit = can('AUDIT_LOG', 'view');
+  const [auditEvents, setAuditEvents] = useState([]);
+  const [auditLoading, setAuditLoading] = useState(true);
+  useEffect(() => {
+    if (!canSeeAudit) {
+      setAuditLoading(false);
+      return;
+    }
+    let cancelled = false;
+    AuditLogApi.recent({ page: 0, size: 8 })
+      .then((resp) => {
+        if (cancelled) return;
+        if (resp?.data?.status === 'SUCCESS') {
+          setAuditEvents(resp.data.data?.content || []);
+        }
+      })
+      .catch(() => {
+        // non-critical widget — silent
+      })
+      .finally(() => {
+        if (!cancelled) setAuditLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [canSeeAudit]);
 
   useEffect(() => {
     let cancelled = false;
@@ -257,6 +291,23 @@ export default function Dashboard() {
           </CardBody>
         </Card>
       </div>
+
+      {canSeeAudit && (
+        <div className="grid gap-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Admin activity</CardTitle>
+            </CardHeader>
+            <CardBody>
+              {auditLoading ? (
+                <Skeleton className="h-32 w-full" />
+              ) : (
+                <AdminActivityFeed events={auditEvents} />
+              )}
+            </CardBody>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }
@@ -592,6 +643,45 @@ function ActivityFeed({ events }) {
           </span>
           <span className="shrink-0 text-[11px] text-slate-400">
             {ev.created ? timeFormatter.format(new Date(ev.created)) : ''}
+          </span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+function AdminActivityFeed({ events }) {
+  if (!events.length) {
+    return (
+      <EmptyState
+        icon={UserCog}
+        title="No admin activity yet"
+        description="Edits and deletes made by any admin/staff account across the panel show up here."
+        className="border-0 bg-transparent py-6"
+      />
+    );
+  }
+  return (
+    <ol className="divide-y divide-slate-100">
+      {events.map((ev) => (
+        <li key={ev.id} className="flex items-baseline gap-2 py-2 text-xs first:pt-0 last:pb-0">
+          <span className="shrink-0 font-semibold text-slate-700">
+            {ev.actorNameSnapshot || 'Unknown'}
+          </span>
+          <span
+            className={cn(
+              'shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
+              ev.action === 'DELETE' ? 'bg-red-50 text-red-600' : 'bg-sky-50 text-sky-600',
+            )}
+          >
+            {ev.action}
+          </span>
+          <span className="min-w-0 flex-1 truncate text-slate-500">
+            {ev.description || ev.module}
+            <span className="text-slate-400"> · {String(ev.module || '').replace('_', ' ').toLowerCase()}</span>
+          </span>
+          <span className="shrink-0 text-[11px] text-slate-400">
+            {ev.createdAt ? timeFormatter.format(new Date(ev.createdAt)) : ''}
           </span>
         </li>
       ))}
