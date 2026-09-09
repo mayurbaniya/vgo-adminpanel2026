@@ -420,6 +420,12 @@ export const Notifications = {
     client.post('/admin/firebase/notifications/topic', data),
   sendByToken: (data) =>
     client.post('/admin/firebase/notifications/send-using-fcmToken', data),
+  // Resolves server-side to every FCM token registered for that user (one
+  // per signed-in device) — the admin only ever picks a user, never a token.
+  sendByUser: (data) =>
+    client.post('/admin/firebase/notifications/send-using-userID', data),
+  searchUsers: (params) =>
+    client.get('/admin/firebase/notifications/users/search', { params }),
 };
 
 // -----------------------------------------------------------------------------
