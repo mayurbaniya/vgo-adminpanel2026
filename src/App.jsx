@@ -3,6 +3,7 @@ import AdminLayout from './layouts/AdminLayout.jsx';
 import { ProtectedRoute, RequirePermission } from './auth/ProtectedRoute.jsx';
 
 import Login from './pages/Login.jsx';
+import AcceptInvite from './pages/AcceptInvite.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import VehiclesList from './pages/vehicles/VehiclesList.jsx';
 import PriceReview from './pages/vehicles/PriceReview.jsx';
@@ -14,6 +15,7 @@ import CitiesManager from './pages/cities/CitiesManager.jsx';
 import LeadsList from './pages/leads/LeadsList.jsx';
 import ExternalLeadsList from './pages/leads/ExternalLeadsList.jsx';
 import SalesList from './pages/sales/SalesList.jsx';
+import MyEarnings from './pages/MyEarnings.jsx';
 import FinanceList from './pages/finance/FinanceList.jsx';
 import LoanLeadsList from './pages/loans/LoanLeadsList.jsx';
 import InterestAbandonmentList from './pages/leads/InterestAbandonmentList.jsx';
@@ -40,6 +42,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/accept-invite" element={<AcceptInvite />} />
 
       <Route
         element={
@@ -60,6 +63,8 @@ export default function App() {
         <Route path="/leads" element={<RequirePermission module="LEADS"><LeadsList /></RequirePermission>} />
         <Route path="/external-leads" element={<RequirePermission module="EXTERNAL_LEADS"><ExternalLeadsList /></RequirePermission>} />
         <Route path="/sales" element={<RequirePermission module="SALES"><SalesList /></RequirePermission>} />
+        {/* Self-service, no module gate — every staff role sees their own commission. */}
+        <Route path="/my-earnings" element={<MyEarnings />} />
         <Route path="/dealerships" element={<RequirePermission module="DEALERSHIPS"><DealershipsManager /></RequirePermission>} />
         <Route path="/staff" element={<RequirePermission module="STAFF"><StaffManager /></RequirePermission>} />
         <Route path="/roles" element={<RequirePermission module="ROLES"><RolesManager /></RequirePermission>} />

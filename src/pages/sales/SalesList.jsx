@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   ChartLine,
+  Check,
   ChevronLeft,
   ChevronRight,
   Pencil,
@@ -102,6 +103,24 @@ export default function SalesList() {
 
   const [addOpen, setAddOpen] = useState(false);
   const [editTarget, setEditTarget] = useState(null);
+  const [markingPaidId, setMarkingPaidId] = useState(null);
+
+  async function handleMarkPaid(saleId) {
+    setMarkingPaidId(saleId);
+    try {
+      const resp = await SalesApi.markCommissionPaid(saleId);
+      if (resp?.data?.status !== 'SUCCESS') {
+        throw new Error(resp?.data?.msg || 'Failed to mark commission paid.');
+      }
+      reloadAll();
+    } catch (err) {
+      setError(
+        err?.response?.data?.msg || err?.message || 'Failed to mark commission paid.',
+      );
+    } finally {
+      setMarkingPaidId(null);
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -313,6 +332,11 @@ export default function SalesList() {
                             ` · exec cut ${s.execCommission}`}
                         </div>
                       )}
+                      {s.commissionStatus && (
+                        <div className="mt-1">
+                          <CommissionStatusBadge status={s.commissionStatus} />
+                        </div>
+                      )}
                       {s.paymentMethod && (
                         <div className="text-[11px] text-slate-400">
                           {s.paymentMethod}
@@ -340,6 +364,18 @@ export default function SalesList() {
                     </td>
                     <td className="px-4 py-3.5">
                       <div className="flex items-center justify-end gap-1.5">
+                        {isSuperAdmin && s.commissionStatus === 'PENDING' && (
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => handleMarkPaid(s.id)}
+                            loading={markingPaidId === s.id}
+                            disabled={!adminID || markingPaidId === s.id}
+                          >
+                            <Check className="h-3.5 w-3.5" />
+                            Mark paid
+                          </Button>
+                        )}
                         <Button
                           size="sm"
                           variant="secondary"
@@ -880,6 +916,28 @@ function ToolbarSelect({ label, value, onChange, options }) {
         ))}
       </select>
     </label>
+  );
+}
+
+function CommissionStatusBadge({ status }) {
+  const s = (status || '').toUpperCase();
+  const tone =
+    s === 'PAID'
+      ? 'bg-emerald-50 text-emerald-700'
+      : s === 'CLAWED_BACK'
+        ? 'bg-red-50 text-red-700'
+        : 'bg-amber-50 text-amber-700';
+  const label =
+    s === 'CLAWED_BACK' ? 'Clawed back' : s === 'PAID' ? 'Paid' : 'Pending';
+  return (
+    <span
+      className={cn(
+        'inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold',
+        tone,
+      )}
+    >
+      {label}
+    </span>
   );
 }
 

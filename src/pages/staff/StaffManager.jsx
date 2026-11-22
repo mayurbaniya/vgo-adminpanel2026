@@ -15,10 +15,11 @@ import {
 } from '@/api/endpoints.js';
 import { cn } from '@/lib/cn';
 
-const ROLES = [
-  { value: 'CITY_MANAGER', label: 'City Manager' },
-  { value: 'SALES_EXEC', label: 'Sales Executive' },
-];
+const SCOPE_BADGE_STYLE = {
+  GLOBAL: 'bg-violet-50 text-violet-700',
+  CITY: 'bg-indigo-50 text-indigo-700',
+  DEALERSHIP: 'bg-sky-50 text-sky-700',
+};
 
 export default function StaffManager() {
   const [staff, setStaff] = useState([]);
@@ -28,6 +29,8 @@ export default function StaffManager() {
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingStaff, setEditingStaff] = useState(null);
   const [mutatingId, setMutatingId] = useState(null);
+  const [resendingId, setResendingId] = useState(null);
+  const [notice, setNotice] = useState('');
 
   async function load() {
     try {
@@ -69,6 +72,23 @@ export default function StaffManager() {
     }
   }
 
+  async function handleResend(member) {
+    setResendingId(member.id);
+    setError('');
+    setNotice('');
+    try {
+      const resp = await StaffApi.resendInvite(member.id);
+      if (resp?.data?.status !== 'SUCCESS') {
+        throw new Error(resp?.data?.msg || 'Failed to resend invite.');
+      }
+      setNotice(`Invite resent to ${member.email}.`);
+    } catch (err) {
+      setError(err?.response?.data?.msg || err?.message || 'Failed to resend invite.');
+    } finally {
+      setResendingId(null);
+    }
+  }
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return staff;
@@ -85,7 +105,7 @@ export default function StaffManager() {
     <div className="space-y-6">
       <PageHeader
         title="Staff"
-        subtitle="Scoped accounts for other cities: city managers see their city's leads and sales, sales executives their dealership's."
+        subtitle="Scoped accounts — what a role sees (a city, a dealership, or everything) is set on it under Roles & Permissions."
         actions={
           <Button
             onClick={() => {
@@ -94,7 +114,7 @@ export default function StaffManager() {
             }}
           >
             <Plus className="h-4 w-4" />
-            Add staff
+            Invite staff
           </Button>
         }
       />
@@ -102,6 +122,11 @@ export default function StaffManager() {
       {error && (
         <div className="rounded-lg border border-red-100 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
           {error}
+        </div>
+      )}
+      {notice && (
+        <div className="rounded-lg border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">
+          {notice}
         </div>
       )}
 
@@ -162,14 +187,18 @@ export default function StaffManager() {
                       <div className="text-xs text-slate-500">{member.email}</div>
                     </td>
                     <td className="px-4 py-3.5">
-                      <RoleBadge role={member.role} />
+                      <RoleBadge accessRole={member.accessRole} />
                     </td>
                     <td className="px-4 py-3.5 text-slate-700">
-                      {member.role === 'SALES_EXEC'
+                      {member.accessRole?.scopeType === 'DEALERSHIP'
                         ? member.dealership
                           ? `${member.dealership.name} (${member.dealership.city?.name || '—'})`
                           : '—'
-                        : member.staffCity?.name || '—'}
+                        : member.accessRole?.scopeType === 'CITY'
+                          ? member.staffCity?.name || '—'
+                          : member.accessRole?.scopeType === 'GLOBAL'
+                            ? 'Everywhere'
+                            : '—'}
                     </td>
                     <td className="px-4 py-3.5">
                       <span
@@ -177,16 +206,26 @@ export default function StaffManager() {
                           'inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-semibold',
                           member.status === 'ACTIVE'
                             ? 'bg-emerald-50 text-emerald-700'
-                            : 'bg-amber-50 text-amber-700',
+                            : member.status === 'PENDING_INVITE'
+                              ? 'bg-slate-100 text-slate-600'
+                              : 'bg-amber-50 text-amber-700',
                         )}
                       >
                         <span
                           className={cn(
                             'h-1.5 w-1.5 rounded-full',
-                            member.status === 'ACTIVE' ? 'bg-emerald-500' : 'bg-amber-500',
+                            member.status === 'ACTIVE'
+                              ? 'bg-emerald-500'
+                              : member.status === 'PENDING_INVITE'
+                                ? 'bg-slate-400'
+                                : 'bg-amber-500',
                           )}
                         />
-                        {member.status === 'ACTIVE' ? 'Active' : 'Disabled'}
+                        {member.status === 'ACTIVE'
+                          ? 'Active'
+                          : member.status === 'PENDING_INVITE'
+                            ? 'Pending invite'
+                            : 'Disabled'}
                       </span>
                     </td>
                     <td className="px-4 py-3.5 text-right">
@@ -201,15 +240,27 @@ export default function StaffManager() {
                         >
                           Edit
                         </Button>
-                        <Button
-                          size="sm"
-                          variant={member.status === 'ACTIVE' ? 'ghost' : 'secondary'}
-                          loading={mutatingId === member.id}
-                          disabled={mutatingId !== null}
-                          onClick={() => handleToggle(member)}
-                        >
-                          {member.status === 'ACTIVE' ? 'Disable' : 'Enable'}
-                        </Button>
+                        {member.status === 'PENDING_INVITE' ? (
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            loading={resendingId === member.id}
+                            disabled={resendingId !== null}
+                            onClick={() => handleResend(member)}
+                          >
+                            Resend invite
+                          </Button>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant={member.status === 'ACTIVE' ? 'ghost' : 'secondary'}
+                            loading={mutatingId === member.id}
+                            disabled={mutatingId !== null}
+                            onClick={() => handleToggle(member)}
+                          >
+                            {member.status === 'ACTIVE' ? 'Disable' : 'Enable'}
+                          </Button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -234,16 +285,15 @@ export default function StaffManager() {
   );
 }
 
-function RoleBadge({ role }) {
-  const label = ROLES.find((r) => r.value === role)?.label || role;
+function RoleBadge({ accessRole }) {
   return (
     <span
       className={cn(
         'inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold',
-        role === 'CITY_MANAGER' ? 'bg-indigo-50 text-indigo-700' : 'bg-sky-50 text-sky-700',
+        SCOPE_BADGE_STYLE[accessRole?.scopeType] || 'bg-slate-100 text-slate-600',
       )}
     >
-      {label}
+      {accessRole?.name || 'Unassigned'}
     </span>
   );
 }
@@ -257,8 +307,6 @@ function StaffEditorModal({ open, member, onClose, onSaved }) {
     name: '',
     email: '',
     phone: '',
-    password: '',
-    role: 'SALES_EXEC',
     cityID: '',
     dealershipID: '',
     roleId: '',
@@ -272,8 +320,6 @@ function StaffEditorModal({ open, member, onClose, onSaved }) {
       name: member?.name || '',
       email: member?.email || '',
       phone: member?.phone || '',
-      password: '',
-      role: member?.role || 'SALES_EXEC',
       cityID: member?.staffCity?.id ? String(member.staffCity.id) : '',
       dealershipID: member?.dealership?.id ? String(member.dealership.id) : '',
       roleId: member?.accessRole?.id ? String(member.accessRole.id) : '',
@@ -297,16 +343,25 @@ function StaffEditorModal({ open, member, onClose, onSaved }) {
     RolesApi.getAll()
       .then((resp) => {
         if (resp?.data?.status === 'SUCCESS') {
-          setRoles(resp.data.data || []);
+          // Super Admin (bypassAll) isn't grantable from the Staff page —
+          // that's a much bigger grant than "add a staff member".
+          setRoles((resp.data.data || []).filter((r) => !r.bypassAll));
         }
       })
       .catch(() => {});
   }, [open, member]);
 
+  const selectedRole = roles.find((r) => String(r.id) === form.roleId);
+
   const canSubmit =
     form.name.trim() &&
-    (isEdit || (form.email.trim() && form.password.length >= 8)) &&
-    (form.role === 'CITY_MANAGER' ? form.cityID : form.dealershipID);
+    (isEdit || form.email.trim()) &&
+    form.roleId &&
+    (selectedRole?.scopeType === 'CITY'
+      ? form.cityID
+      : selectedRole?.scopeType === 'DEALERSHIP'
+        ? form.dealershipID
+        : true);
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -318,11 +373,9 @@ function StaffEditorModal({ open, member, onClose, onSaved }) {
         name: form.name.trim(),
         email: form.email.trim(),
         phone: form.phone.trim() || null,
-        password: form.password || null,
-        role: form.role,
-        cityID: form.role === 'CITY_MANAGER' ? Number(form.cityID) : null,
-        dealershipID: form.role === 'SALES_EXEC' ? Number(form.dealershipID) : null,
-        roleId: form.roleId ? Number(form.roleId) : null,
+        roleId: Number(form.roleId),
+        cityID: selectedRole?.scopeType === 'CITY' ? Number(form.cityID) : null,
+        dealershipID: selectedRole?.scopeType === 'DEALERSHIP' ? Number(form.dealershipID) : null,
       };
       const resp = isEdit
         ? await StaffApi.update(member.id, body)
@@ -343,7 +396,7 @@ function StaffEditorModal({ open, member, onClose, onSaved }) {
       onClose={onClose}
       dismissible={!submitting}
       size="lg"
-      title={isEdit ? `Edit ${member?.name}` : 'Add staff member'}
+      title={isEdit ? `Edit ${member?.name}` : 'Invite staff member'}
       footer={
         <>
           <Button variant="secondary" onClick={onClose} disabled={submitting}>
@@ -355,12 +408,17 @@ function StaffEditorModal({ open, member, onClose, onSaved }) {
             loading={submitting}
             disabled={submitting || !canSubmit}
           >
-            {isEdit ? 'Save changes' : 'Create account'}
+            {isEdit ? 'Save changes' : 'Send invite'}
           </Button>
         </>
       }
     >
       <form id="staff-form" onSubmit={handleSubmit} className="space-y-3">
+        {!isEdit && (
+          <p className="text-xs text-slate-500">
+            They&apos;ll get an email with a link to set their own password — nobody else ever sees it.
+          </p>
+        )}
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
             <Label htmlFor="staff-name">Name</Label>
@@ -381,94 +439,26 @@ function StaffEditorModal({ open, member, onClose, onSaved }) {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <div>
-            <Label htmlFor="staff-email">Email</Label>
-            <Input
-              id="staff-email"
-              type="email"
-              value={form.email}
-              disabled={isEdit}
-              onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
-            />
-          </div>
-          <div>
-            <Label htmlFor="staff-password">
-              {isEdit ? 'New password (blank = unchanged)' : 'Password (min 8 chars)'}
-            </Label>
-            <Input
-              id="staff-password"
-              type="password"
-              value={form.password}
-              onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
-            />
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <div>
-            <Label htmlFor="staff-role">Role</Label>
-            <select
-              id="staff-role"
-              value={form.role}
-              onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))}
-              className="block w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
-            >
-              {ROLES.map((r) => (
-                <option key={r.value} value={r.value}>
-                  {r.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          {form.role === 'CITY_MANAGER' ? (
-            <div>
-              <Label htmlFor="staff-city">City</Label>
-              <select
-                id="staff-city"
-                value={form.cityID}
-                onChange={(e) => setForm((f) => ({ ...f, cityID: e.target.value }))}
-                className="block w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
-              >
-                <option value="">Select a city…</option>
-                {cities.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          ) : (
-            <div>
-              <Label htmlFor="staff-dealership">Dealership</Label>
-              <select
-                id="staff-dealership"
-                value={form.dealershipID}
-                onChange={(e) => setForm((f) => ({ ...f, dealershipID: e.target.value }))}
-                className="block w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
-              >
-                <option value="">Select a dealership…</option>
-                {dealerships.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.name} ({d.city?.name || '—'})
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
+        <div>
+          <Label htmlFor="staff-email">Email</Label>
+          <Input
+            id="staff-email"
+            type="email"
+            value={form.email}
+            disabled={isEdit}
+            onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+          />
         </div>
 
         <div>
-          <Label htmlFor="staff-permission-role">
-            Permissions <span className="font-normal text-slate-400">(view/edit/delete per module)</span>
-          </Label>
+          <Label htmlFor="staff-role">Role</Label>
           <select
-            id="staff-permission-role"
+            id="staff-role"
             value={form.roleId}
-            onChange={(e) => setForm((f) => ({ ...f, roleId: e.target.value }))}
+            onChange={(e) => setForm((f) => ({ ...f, roleId: e.target.value, cityID: '', dealershipID: '' }))}
             className="block w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
           >
-            <option value="">Default for {ROLES.find((r) => r.value === form.role)?.label || form.role}</option>
+            <option value="">Select a role…</option>
             {roles.map((r) => (
               <option key={r.id} value={r.id}>
                 {r.name}
@@ -476,9 +466,47 @@ function StaffEditorModal({ open, member, onClose, onSaved }) {
             ))}
           </select>
           <p className="mt-1 text-xs text-slate-500">
-            Manage what each option grants under Roles &amp; Permissions.
+            Job titles and what they grant are managed under Roles &amp; Permissions.
           </p>
         </div>
+
+        {selectedRole?.scopeType === 'CITY' && (
+          <div>
+            <Label htmlFor="staff-city">City</Label>
+            <select
+              id="staff-city"
+              value={form.cityID}
+              onChange={(e) => setForm((f) => ({ ...f, cityID: e.target.value }))}
+              className="block w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+            >
+              <option value="">Select a city…</option>
+              {cities.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {selectedRole?.scopeType === 'DEALERSHIP' && (
+          <div>
+            <Label htmlFor="staff-dealership">Dealership</Label>
+            <select
+              id="staff-dealership"
+              value={form.dealershipID}
+              onChange={(e) => setForm((f) => ({ ...f, dealershipID: e.target.value }))}
+              className="block w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+            >
+              <option value="">Select a dealership…</option>
+              {dealerships.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.name} ({d.city?.name || '—'})
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
 
         {serverError && (
           <div className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs font-medium text-red-700">

@@ -15,17 +15,12 @@ function readUser() {
   }
 }
 
-// Roles allowed into the panel. ADMIN sees everything; CITY_MANAGER and
-// SALES_EXEC land in the (server-scoped) leads/sales workspace.
-const PANEL_ROLES = ['ADMIN', 'CITY_MANAGER', 'SALES_EXEC'];
-
-function roleList(role) {
-  if (!role) return [];
-  return role.split(',').map((r) => r.trim().toUpperCase());
-}
-
-function hasPanelRole(role) {
-  return roleList(role).some((r) => PANEL_ROLES.includes(r));
+// Any account with a dynamic Role assigned may enter the panel — accessRoleName
+// is only ever set for those (see SignInService#applyPermissions). What the
+// account can actually reach once inside is decided by `can()`/isSuperAdmin
+// below, not by this gate.
+function hasPanelRole(userData) {
+  return Boolean(userData?.accessRoleName);
 }
 
 export function AuthProvider({ children }) {
@@ -34,28 +29,13 @@ export function AuthProvider({ children }) {
   );
   const [user, setUser] = useState(readUser);
 
-  const login = useCallback(async ({ email, password }) => {
-    const resp = await AuthService.login({ email, password });
-    const body = resp?.data;
-
-    // Backend always returns 200; success/failure is in body.status.
-    if (body?.status !== 'SUCCESS') {
-      const err = new Error(body?.msg || 'Login failed.');
-      err.status = body?.status;
-      throw err;
-    }
-
-    const userData = body.data || {};
-
-    if (!hasPanelRole(userData.role)) {
-      throw new Error(
-        'This account is not authorized to access the admin panel.',
-      );
-    }
-
-    const accessToken = userData.accessToken;
+  // Shared by login() and AcceptInvite (staff-invite/accept returns the exact
+  // same UserRespDTO shape, auto-logged-in) — one place builds the slim user
+  // and writes it to storage so the two call sites can't drift.
+  const setSession = useCallback((userData) => {
+    const accessToken = userData?.accessToken;
     if (!accessToken) {
-      throw new Error('Login response missing access token.');
+      throw new Error('Response missing access token.');
     }
 
     const slimUser = {
@@ -67,6 +47,8 @@ export function AuthProvider({ children }) {
       city: userData.city,
       cityID: userData.cityID,
       accessRoleName: userData.accessRoleName,
+      bypassAll: Boolean(userData.bypassAll),
+      scopeType: userData.scopeType,
       // { MODULE_NAME: { canView, canEdit, canDelete } }, resolved server-side
       // from the account's Role. A bypass-all (super admin) role gets every
       // module true here too, but `can()` below checks `isSuperAdmin` first
@@ -82,6 +64,28 @@ export function AuthProvider({ children }) {
     return slimUser;
   }, []);
 
+  const login = useCallback(async ({ email, password }) => {
+    const resp = await AuthService.login({ email, password });
+    const body = resp?.data;
+
+    // Backend always returns 200; success/failure is in body.status.
+    if (body?.status !== 'SUCCESS') {
+      const err = new Error(body?.msg || 'Login failed.');
+      err.status = body?.status;
+      throw err;
+    }
+
+    const userData = body.data || {};
+
+    if (!hasPanelRole(userData)) {
+      throw new Error(
+        'This account is not authorized to access the admin panel.',
+      );
+    }
+
+    return setSession(userData);
+  }, [setSession]);
+
   const logout = useCallback(async () => {
     // Clear local state first so the UI reflects logout immediately, even if
     // the backend call is slow or fails. Backend logout is best-effort.
@@ -96,7 +100,7 @@ export function AuthProvider({ children }) {
     }
   }, []);
 
-  const isSuperAdmin = roleList(user?.role).includes('ADMIN');
+  const isSuperAdmin = Boolean(user?.bypassAll);
 
   // Module permission check — 'view' | 'edit' | 'delete'. isSuperAdmin is
   // still the fast-path bypass (mirrors the backend's Role.bypassAll) so a
@@ -125,8 +129,9 @@ export function AuthProvider({ children }) {
       can,
       login,
       logout,
+      setSession,
     }),
-    [accessToken, user, isSuperAdmin, can, login, logout],
+    [accessToken, user, isSuperAdmin, can, login, logout, setSession],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

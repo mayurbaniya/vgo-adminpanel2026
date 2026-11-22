@@ -9,6 +9,7 @@ import {
   ChartLine,
   ChevronRight,
   ClipboardList,
+  Coins,
   HandCoins,
   Image as ImageIcon,
   LayoutDashboard,
@@ -60,6 +61,9 @@ const NAV_GROUPS = [
       { to: '/leads', label: 'Leads', icon: ClipboardList, module: 'LEADS' },
       { to: '/external-leads', label: 'External Leads', icon: ClipboardList, module: 'EXTERNAL_LEADS' },
       { to: '/sales', label: 'Sales', icon: ChartLine, module: 'SALES' },
+      // Self-service commission view — every staff role has this,
+      // regardless of module permissions (see App.jsx's /my-earnings route).
+      { to: '/my-earnings', label: 'My Earnings', icon: Coins, alwaysVisible: true },
       { to: '/loan-leads', label: 'Loan Leads', icon: Wallet, module: 'LOANS' },
       { to: '/interest-nudges', label: 'Interest Nudges', icon: MessageSquare, module: 'INTEREST_NUDGES' },
       { to: '/finance', label: 'Finance', icon: HandCoins, module: 'FINANCE' },
@@ -148,7 +152,7 @@ function SidebarContent({ onNavigate }) {
   const { can } = useAuth();
   const groups = NAV_GROUPS.map((group) => ({
     ...group,
-    items: group.items.filter((item) => can(item.module, 'view')),
+    items: group.items.filter((item) => item.alwaysVisible || can(item.module, 'view')),
   })).filter((group) => group.items.length > 0);
 
   const canSeeStalePrices = can('PRICE_REVIEW', 'view');
@@ -286,7 +290,7 @@ function Topbar({ onOpenMenu }) {
               {user?.name ?? 'Admin'}
             </div>
             <div className="text-[10px] uppercase tracking-wider text-slate-500">
-              {user?.role ?? 'ADMIN'}
+              {user?.accessRoleName ?? 'Admin'}
             </div>
           </div>
         </div>

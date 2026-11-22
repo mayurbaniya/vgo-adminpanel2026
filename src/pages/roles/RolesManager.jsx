@@ -77,6 +77,15 @@ const MODULE_GROUPS = [
 ];
 const ALL_MODULES = MODULE_GROUPS.flatMap((g) => g.modules.map(([key]) => key));
 
+// Mirrors com.wheely.entities.enums.ScopeType — which slice of data (not
+// which admin pages) a role's accounts see: a whole city, one dealership,
+// or everything.
+const SCOPE_TYPES = [
+  { value: 'GLOBAL', label: 'Everywhere (Super Admin-level)' },
+  { value: 'CITY', label: 'One city' },
+  { value: 'DEALERSHIP', label: 'One dealership' },
+];
+
 export default function RolesManager() {
   const [roles, setRoles] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -173,9 +182,13 @@ export default function RolesManager() {
                   <div className="font-semibold text-slate-900">{role.name}</div>
                   <div className="mt-0.5 text-xs text-slate-500">{role.description || 'No description'}</div>
                 </div>
-                {role.bypassAll && (
+                {role.bypassAll ? (
                   <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-violet-50 px-2 py-0.5 text-[11px] font-semibold text-violet-700">
                     Full access
+                  </span>
+                ) : (
+                  <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
+                    {SCOPE_TYPES.find((s) => s.value === role.scopeType)?.label || role.scopeType}
                   </span>
                 )}
               </div>
@@ -239,6 +252,7 @@ function RoleEditorModal({ open, role, onClose, onSaved }) {
   const readOnly = Boolean(role?.isSystem && role?.bypassAll); // seeded Super Admin — backend rejects edits to it anyway
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [scopeType, setScopeType] = useState('DEALERSHIP');
   const [matrix, setMatrix] = useState(emptyMatrix);
   const [submitting, setSubmitting] = useState(false);
   const [serverError, setServerError] = useState('');
@@ -247,6 +261,7 @@ function RoleEditorModal({ open, role, onClose, onSaved }) {
     if (!open) return;
     setName(role?.name || '');
     setDescription(role?.description || '');
+    setScopeType(role?.scopeType || 'DEALERSHIP');
     const next = emptyMatrix();
     (role?.permissions || []).forEach((row) => {
       next[row.module] = { canView: row.canView, canEdit: row.canEdit, canDelete: row.canDelete };
@@ -284,7 +299,13 @@ function RoleEditorModal({ open, role, onClose, onSaved }) {
     setSubmitting(true);
     setServerError('');
     try {
-      const body = { name: name.trim(), description: description.trim() || null, bypassAll: false, permissions: permissionsPayload };
+      const body = {
+        name: name.trim(),
+        description: description.trim() || null,
+        bypassAll: false,
+        scopeType,
+        permissions: permissionsPayload,
+      };
       const resp = isEdit ? await RolesApi.update(role.id, body) : await RolesApi.create(body);
       if (resp?.data?.status !== 'SUCCESS') {
         throw new Error(resp?.data?.msg || 'Failed to save role.');
@@ -331,6 +352,28 @@ function RoleEditorModal({ open, role, onClose, onSaved }) {
             <Input id="role-desc" value={description} disabled={readOnly} onChange={(e) => setDescription(e.target.value)} />
           </div>
         </div>
+
+        {!readOnly && (
+          <div>
+            <Label htmlFor="role-scope">Data scope</Label>
+            <select
+              id="role-scope"
+              value={scopeType}
+              onChange={(e) => setScopeType(e.target.value)}
+              className="block w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+            >
+              {SCOPE_TYPES.map((s) => (
+                <option key={s.value} value={s.value}>
+                  {s.label}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-slate-500">
+              Which leads, sales and dealerships an account on this role can see — separate from the module
+              permissions below.
+            </p>
+          </div>
+        )}
 
         {readOnly ? (
           <div className="rounded-lg border border-violet-100 bg-violet-50 px-3 py-2 text-xs font-medium text-violet-700">

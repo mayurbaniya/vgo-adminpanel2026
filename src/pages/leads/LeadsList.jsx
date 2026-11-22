@@ -119,7 +119,7 @@ function toLocalInputValue(value) {
 
 export default function LeadsList() {
   const { user } = useAuth();
-  const isExec = (user?.role || '').includes('SALES_EXEC');
+  const isExec = user?.scopeType === 'DEALERSHIP';
   // Lifecycle trail is manager/admin territory; execs just work the lead.
   const canViewHistory = !isExec;
   const [leads, setLeads] = useState([]);
@@ -697,7 +697,7 @@ function ActiveOffersStrip({ vehicleId }) {
 
 function EditLeadModal({ lead, onClose, onSaved }) {
   const { user, isSuperAdmin } = useAuth();
-  const canAssign = !(user?.role || '').includes('SALES_EXEC');
+  const canAssign = user?.scopeType !== 'DEALERSHIP';
   // Admin supervises rather than works leads: their editor is just stage,
   // priority, notes and assignment. The call-tracking fields belong to the
   // manager/exec actually making the calls (their current values are still
@@ -1065,9 +1065,9 @@ function LeadHistoryModal({ lead, onClose }) {
   );
 }
 
-// Assignment control inside the lead editor — visible to ADMIN and
-// CITY_MANAGER (backend rejects SALES_EXEC anyway). Assigning routes the
-// lead to the assignee's dealership and moves NEW → ASSIGNED.
+// Assignment control inside the lead editor — visible to GLOBAL/CITY-scoped
+// staff (backend rejects a DEALERSHIP-scoped actor anyway). Assigning routes
+// the lead to the assignee's dealership and moves NEW → ASSIGNED.
 function AssignSection({ lead, onAssigned }) {
   const [staff, setStaff] = useState([]);
   const [selected, setSelected] = useState('');
@@ -1136,7 +1136,7 @@ function AssignSection({ lead, onAssigned }) {
           {staff.map((s) => (
             <option key={s.id} value={s.id}>
               {s.name} —{' '}
-              {s.role === 'SALES_EXEC'
+              {s.accessRole?.scopeType === 'DEALERSHIP'
                 ? s.dealership?.name || 'no dealership'
                 : `${s.staffCity?.name || '—'} (manager)`}
             </option>

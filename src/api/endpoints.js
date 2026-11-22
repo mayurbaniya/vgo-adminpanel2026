@@ -44,6 +44,24 @@ export const Dashboard = {
   // Lead funnel, exec leaderboard, city split, lost reasons, action queue,
   // recent audit events.
   pipeline: () => client.get('/admin/dashboard/pipeline'),
+  // Hierarchy-shaped view (employees/dealerships/sales/targets) scoped to
+  // the caller's own city/dealership — see TeamDashboard.jsx.
+  teamStats: () => client.get('/admin/dashboard/team'),
+  // Org-wide earnings trend at a chosen granularity — ADMIN-only (same
+  // commission visibility rule as everything else in Sales/Stats).
+  earningsHistory: (granularity) =>
+    client.get('/admin/dashboard/earnings', { params: { granularity } }),
+  // Self-service: the logged-in staff member's own commission history.
+  // Available to every role — no permission gate on the backend route.
+  myEarnings: (granularity) =>
+    client.get('/admin/dashboard/my-earnings', { params: { granularity } }),
+};
+
+// -----------------------------------------------------------------------------
+// /admin/sales-targets/  →  SalesTargetController
+// -----------------------------------------------------------------------------
+export const SalesTargets = {
+  set: (data) => client.post('/admin/sales-targets/set', data),
 };
 
 // -----------------------------------------------------------------------------
@@ -283,6 +301,16 @@ export const Staff = {
     client.put('/admin/staff/enable', null, { params: { staffID } }),
   disable: (staffID) =>
     client.put('/admin/staff/disable', null, { params: { staffID } }),
+  resendInvite: (staffID) =>
+    client.put('/admin/staff/resend-invite', null, { params: { staffID } }),
+};
+
+// -----------------------------------------------------------------------------
+// /staff-invite/  →  StaffInviteController (public — no auth token yet)
+// -----------------------------------------------------------------------------
+export const StaffInvite = {
+  verify: (token) => client.get('/staff-invite/verify', { params: { token } }),
+  accept: (data) => client.post('/staff-invite/accept', data),
 };
 
 // -----------------------------------------------------------------------------
@@ -330,6 +358,9 @@ export const Sales = {
   add: (data) => client.post('/admin/sales/add-sale', data),
   update: (adminID, saleID, data) =>
     client.put('/admin/sales/update', data, { params: { adminID, saleID } }),
+  // ADMIN-only: flips a sale's commissionStatus to PAID.
+  markCommissionPaid: (saleID) =>
+    client.put('/admin/sales/mark-paid', null, { params: { saleID } }),
 };
 
 // -----------------------------------------------------------------------------

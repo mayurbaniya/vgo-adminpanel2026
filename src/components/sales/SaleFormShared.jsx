@@ -35,7 +35,9 @@ export function saleBodyFromForm(form) {
     saleStatus: form.saleStatus,
     invoiceNumber: form.invoiceNumber.trim(),
     notes: form.notes.trim(),
-    earned: form.earned.trim(),
+    // earned is now a typed BigDecimal on the backend — send null rather
+    // than an empty string, which Jackson can't parse as a number.
+    earned: form.earned.trim() === '' ? null : form.earned.trim(),
     vehicleNumber: form.vehicleNumber.trim(),
     chesisNumber: form.chesisNumber.trim(),
   };
@@ -62,13 +64,17 @@ export function SaleFields({ form, patch, full = true }) {
           <div>
             <Label>Earned (commission)</Label>
             <Input
+              type="number"
+              step="0.01"
+              min="0"
               value={form.earned}
               onChange={(e) => patch({ earned: e.target.value })}
               placeholder="auto-filled from vehicle commission"
             />
             <div className="mt-1 text-[11px] text-slate-400">
               Auto-computed from the vehicle's commission when it's set — this
-              value is only used as a fallback.
+              value is only used as a fallback if the vehicle has no
+              commission configured. Numbers only.
             </div>
           </div>
         )}
