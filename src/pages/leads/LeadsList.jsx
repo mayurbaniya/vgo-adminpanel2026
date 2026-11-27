@@ -8,6 +8,8 @@ import {
   PhoneOff,
   Search,
   Sparkles,
+  Trash2,
+  Undo2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button.jsx';
 import { Card } from '@/components/ui/Card.jsx';
@@ -118,10 +120,15 @@ function toLocalInputValue(value) {
 }
 
 export default function LeadsList() {
-  const { user } = useAuth();
+  const { user, can } = useAuth();
   const isExec = user?.scopeType === 'DEALERSHIP';
   // Lifecycle trail is manager/admin territory; execs just work the lead.
   const canViewHistory = !isExec;
+  // Delete / trash / restore all hang off the LEADS "delete" grant.
+  const canDelete = can('LEADS', 'delete');
+  const [view, setView] = useState('active'); // 'active' | 'trash'
+  const [deleting, setDeleting] = useState(null);
+  const [reloadKey, setReloadKey] = useState(0);
   const [leads, setLeads] = useState([]);
   const [meta, setMeta] = useState({
     pageNumber: 0,
@@ -202,7 +209,7 @@ export default function LeadsList() {
     return () => {
       cancelled = true;
     };
-  }, [page, pageSize, sortBy, sortDir, debouncedQuery, statusFilter]);
+  }, [page, pageSize, sortBy, sortDir, debouncedQuery, statusFilter, reloadKey]);
 
   const showingFrom =
     meta.totalElements === 0 ? 0 : meta.pageNumber * pageSize + 1;
@@ -211,11 +218,30 @@ export default function LeadsList() {
       ? 0
       : Math.min(meta.totalElements, (meta.pageNumber + 1) * pageSize);
 
+  if (view === 'trash') {
+    return (
+      <LeadTrash
+        onBack={() => {
+          setView('active');
+          setReloadKey((k) => k + 1);
+        }}
+      />
+    );
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Leads"
         subtitle="In-app leads from the Wheely consumer flow."
+        actions={
+          canDelete && (
+            <Button variant="secondary" onClick={() => setView('trash')}>
+              <Trash2 className="h-4 w-4" />
+              Trash
+            </Button>
+          )
+        }
       />
 
       {error && (
@@ -437,6 +463,17 @@ export default function LeadsList() {
                             History
                           </Button>
                         )}
+                        {/* A WON lead has a recorded sale — the backend refuses to trash it. */}
+                        {canDelete && normalizeStage(lead.status) !== 'WON' && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="text-red-600 hover:bg-red-50"
+                            onClick={() => setDeleting(lead)}
+                          >
+                            Delete
+                          </Button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -500,6 +537,15 @@ export default function LeadsList() {
         onClose={() => setHistoryLead(null)}
       />
 
+      <DeleteLeadModal
+        lead={deleting}
+        onClose={() => setDeleting(null)}
+        onDeleted={() => {
+          setDeleting(null);
+          setReloadKey((k) => k + 1);
+        }}
+      />
+
       <RecordSaleFromLeadModal
         lead={saleLead}
         onClose={() => setSaleLead(null)}
@@ -515,6 +561,286 @@ export default function LeadsList() {
           setSaleLead(null);
         }}
       />
+    </div>
+  );
+}
+
+// Confirmation for moving a lead to trash. Soft delete — the copy says how
+// long it stays restorable so nobody mistakes it for permanent removal.
+function DeleteLeadModal({ lead, onClose, onDeleted }) {
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    setSubmitting(false);
+    setError('');
+  }, [lead]);
+
+  if (!lead) return null;
+
+  async function confirm() {
+    setSubmitting(true);
+    setError('');
+    try {
+      const resp = await LeadsApi.remove(lead.interestID);
+      if (resp?.data?.status !== 'SUCCESS') {
+        throw new Error(resp?.data?.msg || 'Failed to delete lead.');
+      }
+      onDeleted();
+    } catch (err) {
+      setError(
+        err?.response?.data?.msg || err?.message || 'Failed to delete lead.',
+      );
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      dismissible={!submitting}
+      title="Move lead to trash?"
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose} disabled={submitting}>
+            Cancel
+          </Button>
+          <Button variant="danger" onClick={confirm} loading={submitting}>
+            Move to trash
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-3 text-sm text-slate-600">
+        <div className="rounded-lg border border-slate-100 bg-slate-50/60 px-3 py-2 text-xs">
+          <div className="font-semibold text-slate-700">
+            {lead.user?.name || `Lead #${lead.interestID}`} ·{' '}
+            {lead.vehicle?.model || 'Unknown vehicle'}
+          </div>
+          <div className="text-slate-500">
+            {lead.user?.phone || lead.user?.email || '—'}
+          </div>
+        </div>
+        <p>
+          The lead disappears from the list and the dashboard. You can restore
+          it from <strong>Trash</strong> for 7 days; after that it is deleted
+          permanently. Admin is emailed about this deletion.
+        </p>
+        {error && (
+          <div className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
+            {error}
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+// Trashed leads with a countdown to permanent deletion and a Restore action.
+function LeadTrash({ onBack }) {
+  const [rows, setRows] = useState([]);
+  const [meta, setMeta] = useState({ pageNumber: 0, totalPages: 0, lastPage: true });
+  const [page, setPage] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [busyId, setBusyId] = useState(null);
+  const [reloadKey, setReloadKey] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    LeadsApi.trash({ page, size: 10 })
+      .then((resp) => {
+        if (cancelled) return;
+        const status = resp?.data?.status;
+        if (status === 'SUCCESS') {
+          const p = resp.data.data;
+          setRows(p?.content || []);
+          setMeta({
+            pageNumber: p?.pageNumber ?? page,
+            totalPages: p?.totalPages ?? 0,
+            lastPage: p?.lastPage ?? p?.LastPage ?? true,
+          });
+          setError('');
+        } else if (status === 'EMPTY') {
+          // Restoring the last row of a later page leaves it empty — step back.
+          if (page > 0) setPage(page - 1);
+          setRows([]);
+          setMeta({ pageNumber: 0, totalPages: 0, lastPage: true });
+          setError('');
+        } else {
+          throw new Error(resp?.data?.msg || 'Failed to load trash.');
+        }
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setError(err?.response?.data?.msg || err?.message || 'Failed to load trash.');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [page, reloadKey]);
+
+  async function restore(lead) {
+    setBusyId(lead.interestID);
+    setError('');
+    try {
+      const resp = await LeadsApi.restore(lead.interestID);
+      if (resp?.data?.status !== 'SUCCESS') {
+        throw new Error(resp?.data?.msg || 'Failed to restore lead.');
+      }
+      setReloadKey((k) => k + 1);
+    } catch (err) {
+      setError(err?.response?.data?.msg || err?.message || 'Failed to restore lead.');
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        title="Lead trash"
+        subtitle="Deleted leads can be restored until their deadline, then they are removed permanently."
+        actions={
+          <Button variant="secondary" onClick={onBack}>
+            <ChevronLeft className="h-4 w-4" />
+            Back to leads
+          </Button>
+        }
+      />
+
+      {error && (
+        <div className="rounded-lg border border-red-100 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+          {error}
+        </div>
+      )}
+
+      <Card className="overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+              <tr>
+                <th className="px-4 py-3">User</th>
+                <th className="px-4 py-3">Vehicle</th>
+                <th className="px-4 py-3">Stage</th>
+                <th className="px-4 py-3">Deleted</th>
+                <th className="px-4 py-3">Permanently removed</th>
+                <th className="px-4 py-3 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {loading ? (
+                Array.from({ length: 4 }).map((_, i) => (
+                  <tr key={i}>
+                    {[0, 1, 2, 3, 4, 5].map((c) => (
+                      <td key={c} className="px-4 py-3.5">
+                        <Skeleton className="h-3 w-3/4" />
+                      </td>
+                    ))}
+                  </tr>
+                ))
+              ) : rows.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-4 py-12">
+                    <EmptyState
+                      icon={Trash2}
+                      title="Trash is empty"
+                      description="Deleted leads show up here for 7 days."
+                      className="border-0 bg-transparent py-0"
+                    />
+                  </td>
+                </tr>
+              ) : (
+                rows.map((lead) => {
+                  const msLeft = lead.purgeAt
+                    ? new Date(lead.purgeAt).getTime() - Date.now()
+                    : null;
+                  const urgent = msLeft !== null && msLeft < 24 * 3600 * 1000;
+                  const daysLeft =
+                    msLeft === null ? null : Math.max(0, Math.ceil(msLeft / 86400000));
+                  return (
+                    <tr key={lead.interestID} className="align-top hover:bg-slate-50/50">
+                      <td className="px-4 py-3.5">
+                        <div className="font-medium text-slate-900">
+                          {lead.user?.name || '—'}
+                        </div>
+                        <div className="text-xs text-slate-500">
+                          {lead.user?.phone || lead.user?.email || '—'}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3.5 text-slate-700">
+                        {lead.vehicle?.model || '—'}
+                      </td>
+                      <td className="px-4 py-3.5">
+                        <LeadStatusBadge status={lead.status} />
+                      </td>
+                      <td className="px-4 py-3.5">
+                        <div className="text-xs text-slate-700">
+                          {formatDateTime(lead.deletedAt)}
+                        </div>
+                        <div className="text-[11px] text-slate-500">
+                          by {lead.deletedByName || '—'}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3.5">
+                        <div className={cn('text-xs', urgent ? 'font-semibold text-red-600' : 'text-slate-700')}>
+                          {formatDateTime(lead.purgeAt)}
+                        </div>
+                        {daysLeft !== null && (
+                          <div className={cn('text-[11px]', urgent ? 'text-red-500' : 'text-slate-500')}>
+                            {urgent ? 'Less than 24h left' : `${daysLeft} days left`}
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-4 py-3.5 text-right">
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          loading={busyId === lead.interestID}
+                          disabled={busyId !== null}
+                          onClick={() => restore(lead)}
+                        >
+                          <Undo2 className="h-3.5 w-3.5" />
+                          Restore
+                        </Button>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="flex items-center justify-end gap-2 border-t border-slate-100 px-4 py-3 text-xs text-slate-500">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => setPage((p) => Math.max(0, p - 1))}
+            disabled={loading || meta.pageNumber === 0}
+          >
+            <ChevronLeft className="h-4 w-4" />
+            Prev
+          </Button>
+          <div className="px-2 text-slate-600">
+            Page {meta.pageNumber + 1} of {Math.max(1, meta.totalPages)}
+          </div>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => setPage((p) => p + 1)}
+            disabled={loading || meta.lastPage}
+          >
+            Next
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
+      </Card>
     </div>
   );
 }

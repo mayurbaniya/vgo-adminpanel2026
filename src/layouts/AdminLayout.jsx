@@ -19,6 +19,7 @@ import {
   MessageSquare,
   MonitorSmartphone,
   PhoneCall,
+  SearchX,
   Settings2,
   ShieldCheck,
   Sparkles,
@@ -53,6 +54,7 @@ const NAV_GROUPS = [
       { to: '/videos', label: 'Videos', icon: Video, module: 'VIDEOS' },
       { to: '/brands', label: 'Brands', icon: Tags, module: 'BRANDS' },
       { to: '/cities', label: 'Cities', icon: Building2, module: 'CITIES' },
+      { to: '/search-insights', label: 'Search Insights', icon: SearchX, module: 'SEARCH_INSIGHTS' },
     ],
   },
   {

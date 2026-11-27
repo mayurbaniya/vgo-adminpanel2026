@@ -32,6 +32,7 @@ import StaffManager from './pages/staff/StaffManager.jsx';
 import RolesManager from './pages/roles/RolesManager.jsx';
 import DealershipsManager from './pages/dealerships/DealershipsManager.jsx';
 import ServerHealth from './pages/system/ServerHealth.jsx';
+import SearchInsights from './pages/search/SearchInsights.jsx';
 
 // Every page is wrapped in RequirePermission for its AdminModule (mirrors the
 // backend's AdminModule enum + @RequiresPermission — see RoleController /
@@ -80,6 +81,7 @@ export default function App() {
         <Route path="/feature-flags" element={<RequirePermission module="FEATURE_FLAGS"><FeatureFlags /></RequirePermission>} />
         <Route path="/contact-info" element={<RequirePermission module="CONTACT_INFO"><ContactInfo /></RequirePermission>} />
         <Route path="/server-health" element={<RequirePermission module="SERVER_HEALTH"><ServerHealth /></RequirePermission>} />
+        <Route path="/search-insights" element={<RequirePermission module="SEARCH_INSIGHTS"><SearchInsights /></RequirePermission>} />
         <Route path="/sessions" element={<RequirePermission module="SESSIONS"><Sessions /></RequirePermission>} />
       </Route>
 

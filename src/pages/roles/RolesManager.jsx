@@ -27,6 +27,7 @@ const MODULE_GROUPS = [
       ['VIDEOS', 'Videos'],
       ['BRANDS', 'Brands'],
       ['CITIES', 'Cities'],
+      ['SEARCH_INSIGHTS', 'Search Insights'],
     ],
   },
   {

@@ -274,6 +274,10 @@ export const Leads = {
     client.put('/admin/leads/assign', null, { params: { leadID, staffID } }),
   events: (leadID) => client.get('/admin/leads/events', { params: { leadID } }),
   assignableStaff: () => client.get('/admin/leads/assignable-staff'),
+  // Soft delete: moves to trash, restorable until the retention window ends.
+  remove: (leadID) => client.delete('/admin/leads/delete', { params: { leadID } }),
+  restore: (leadID) => client.put('/admin/leads/restore', null, { params: { leadID } }),
+  trash: (params) => client.get('/admin/leads/trash', { params }),
 };
 
 // -----------------------------------------------------------------------------
@@ -555,6 +559,16 @@ export const Roles = {
 export const AuditLog = {
   recent: (params) => client.get('/admin/audit/recent', { params }),
   search: (params) => client.get('/admin/audit/search', { params }),
+};
+
+// -----------------------------------------------------------------------------
+// /admin/search-insights/  →  SearchInsightsController
+// Searches users ran in the app that found nothing, most-asked first.
+// -----------------------------------------------------------------------------
+export const SearchInsights = {
+  misses: (params) => client.get('/admin/search-insights/misses', { params }),
+  dismiss: (id) => client.put(`/admin/search-insights/misses/${id}/dismiss`),
+  remove: (id) => client.delete(`/admin/search-insights/misses/${id}`),
 };
 
 // -----------------------------------------------------------------------------
