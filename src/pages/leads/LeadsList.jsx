@@ -367,6 +367,19 @@ export default function LeadsList() {
                       <div className="text-xs text-slate-500">
                         {lead.user?.phone || lead.user?.email || '—'}
                       </div>
+                      {lead.nextFollowUpAt && (
+                        <div
+                          className={cn(
+                            'mt-1 text-xs font-medium',
+                            new Date(lead.nextFollowUpAt) < new Date()
+                              ? 'text-red-600'
+                              : 'text-amber-600',
+                          )}
+                        >
+                          ⏰ Follow-up {formatDateTime(lead.nextFollowUpAt)}
+                          {new Date(lead.nextFollowUpAt) < new Date() ? ' (overdue)' : ''}
+                        </div>
+                      )}
                       {lead.notes && (
                         <div
                           className="mt-1 max-w-xs truncate text-xs italic text-slate-400"
@@ -1050,6 +1063,7 @@ function EditLeadModal({ lead, onClose, onSaved }) {
       didAdminCalled: Boolean(lead.didAdminCalled),
       didUserAnswered: Boolean(lead.didUserAnswered),
       lastCallTime: toLocalInputValue(lead.lastCallTime),
+      nextFollowUpAt: toLocalInputValue(lead.nextFollowUpAt),
       notes: lead.notes || '',
       lostReason: lead.lostReason || '',
       bookingAmount:
@@ -1079,6 +1093,8 @@ function EditLeadModal({ lead, onClose, onSaved }) {
         // If admin didn't call, the user couldn't have answered.
         didUserAnswered: form.didAdminCalled ? form.didUserAnswered : false,
         lastCallTime: form.lastCallTime ? form.lastCallTime + ':00' : null,
+        updateFollowUp: true,
+        nextFollowUpAt: form.nextFollowUpAt ? form.nextFollowUpAt + ':00' : null,
         notes: form.notes,
         priority: form.priority,
         lostReason: form.status === 'LOST' ? form.lostReason.trim() : null,
@@ -1099,6 +1115,7 @@ function EditLeadModal({ lead, onClose, onSaved }) {
         didAdminCalled: updated?.didAdminCalled ?? body.didAdminCalled,
         didUserAnswered: updated?.didUserAnswered ?? body.didUserAnswered,
         lastCallTime: updated?.lastCallTime ?? body.lastCallTime,
+        nextFollowUpAt: updated ? updated.nextFollowUpAt : body.nextFollowUpAt,
         notes: updated?.notes ?? body.notes,
         priority: updated?.priority,
         lostReason: updated?.lostReason ?? body.lostReason,
@@ -1267,6 +1284,21 @@ function EditLeadModal({ lead, onClose, onSaved }) {
             </div>
           </div>
         )}
+
+        <div>
+          <Label htmlFor="lead-follow-up">Next follow-up</Label>
+          <input
+            id="lead-follow-up"
+            type="datetime-local"
+            value={form.nextFollowUpAt}
+            onChange={(e) => patch({ nextFollowUpAt: e.target.value })}
+            className="block w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+          />
+          <p className="mt-1 text-xs text-slate-500">
+            The assigned employee gets a notification and an email at this
+            time. Clear the field to remove the follow-up.
+          </p>
+        </div>
 
         <div>
           <Label htmlFor="lead-notes">Notes</Label>
